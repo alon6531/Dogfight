@@ -22,7 +22,6 @@ int main() {
 
     while (!WindowShouldClose()) {
         UpdateCamera(&camera, CAMERA_FREE);
-        dsad
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
