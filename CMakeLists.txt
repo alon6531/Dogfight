@@ -21,7 +21,10 @@ set(USE_AUDIO OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(raylib)
 
-add_executable(Dogfight main.cpp)
+add_executable(Dogfight main.cpp
+        Engine.cpp
+        Engine.h
+        Global.h)
 
 target_link_libraries(Dogfight raylib)
 target_include_directories(Dogfight PUBLIC ${raylib_SOURCE_DIR}/src)
