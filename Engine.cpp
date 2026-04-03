@@ -5,6 +5,7 @@
 #include "Engine.h"
 #include "Global.h"
 
+
 /**
  * Constructor
  */
@@ -22,6 +23,8 @@ Engine::Engine() {
 
     DisableCursor();
     m_shouldClose = false;
+
+    m_navGraph = BuildGraphFromMap(GenerateRandomWaypoints(100, {300,300,300}));
 
 }
 
@@ -65,7 +68,7 @@ void Engine::Render() {
     DrawGrid(20, 1.0f);
 
 
-
+    DrawNavigationGraph(m_navGraph);
 
 
 

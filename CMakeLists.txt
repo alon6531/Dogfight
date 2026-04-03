@@ -24,7 +24,9 @@ FetchContent_MakeAvailable(raylib)
 add_executable(Dogfight main.cpp
         Engine.cpp
         Engine.h
-        Global.h)
+        Global.h
+        GraphBuilder.h
+        GraphBuilder.cpp)
 
 target_link_libraries(Dogfight raylib)
 target_include_directories(Dogfight PUBLIC ${raylib_SOURCE_DIR}/src)

@@ -6,6 +6,7 @@
 #define DOGFIGHT_ENGINE_H
 
 #include "raylib.h"
+#include "GraphBuilder.h"
 
 
 class Engine {
@@ -22,6 +23,7 @@ private:
 
     Camera3D m_camera;
     bool m_shouldClose;
+    NavigationGraph m_navGraph;
 };
 
 
