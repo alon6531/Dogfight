@@ -8,6 +8,10 @@
 
 #define WIN_WIDTH 1280
 #define WIN_HEIGHT 720
+#include <vector>
+
+
+extern void ComputeDijkstra(class NavigationGraph& graph, int startNodeIdx, std::vector<float> &outDistances);
 
 
 #endif //DOGFIGHT_GLOBAL_H

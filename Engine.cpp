@@ -3,6 +3,10 @@
 //
 
 #include "Engine.h"
+
+#include <iostream>
+#include <ostream>
+
 #include "Global.h"
 
 
@@ -22,10 +26,26 @@ Engine::Engine() {
     m_camera.projection = CAMERA_PERSPECTIVE;
 
     DisableCursor();
+
+    std::vector<Obstacle> obstacles;
+
+
+    Obstacle sphereObs;
+    sphereObs.pos = { 50.0f, 0.0f, 0.0f };
+    sphereObs.radius = 10.0f;
+    //obstacles.push_back(sphereObs);
+
     m_shouldClose = false;
+    m_obstacle = GenMeshSphere(sphereObs.radius, 32, 32);
+    m_obstacleModel = LoadModelFromMesh(m_obstacle);
 
-    m_navGraph = BuildGraphFromMap(GenerateRandomWaypoints(100, {300,300,300}));
 
+
+    m_navGraph.BuildGraphFromMap({500, 100, 500}, 10, obstacles);
+    m_navGraph.PrepareGPUData();
+    m_navGraph.BuildDistanceMatrix();
+
+    m_plane = std::make_unique<Plane>(Vector3(), (Vector3){0, 5, 5}, (Vector3){0,0,0});
 }
 
 /**
@@ -53,6 +73,14 @@ void Engine::Update(float deltaTime) {
 
     UpdateCamera(&m_camera, CAMERA_FREE);
 
+
+
+
+    m_plane->Update(deltaTime, m_navGraph);
+
+
+    std::cout << m_navGraph.GetHeuristic(0, 600) << std::endl;
+
 }
 
 /**
@@ -64,15 +92,35 @@ void Engine::Render() {
 
     BeginMode3D(m_camera);
 
+    float axisLength = 10.0f;
+    float axisThick  = 0.08f;
+    int slices = 8;
+
+    DrawCylinderEx({ 0, 0, 0 }, { axisLength, 0, 0 }, axisThick, axisThick, slices, RED);
+    DrawCylinderEx({ 0, 0, 0 }, { 0, axisLength, 0 }, axisThick, axisThick, slices, GREEN);
+    DrawCylinderEx({ 0, 0, 0 }, { 0, 0, axisLength }, axisThick, axisThick, slices, BLUE);
+
+    DrawModel(m_obstacleModel, { 0, 0, 0 }, 1.0f, GRAY);
+
 
     DrawGrid(20, 1.0f);
 
 
-    DrawNavigationGraph(m_navGraph);
+    m_navGraph.Draw(m_camera.position, 100);
+
+    m_plane->Draw();
+
+
+
 
 
 
     EndMode3D();
+
+    DrawText("X Axis: RED", 10, 70, 20, RED);
+    DrawText("Y Axis: GREEN", 10, 95, 20, DARKGREEN);
+    DrawText("Z Axis: BLUE", 10, 120, 20, BLUE);
+
 
     DrawFPS(10, 10);
     DrawText("ENGINE MODE: ACTIVE", 10, 40, 20, DARKGREEN);

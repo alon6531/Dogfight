@@ -4,11 +4,13 @@
 
 #ifndef DOGFIGHT_GRAPHBUILDER_H
 #define DOGFIGHT_GRAPHBUILDER_H
-#include <vector>
+
 
 #endif //DOGFIGHT_GRAPHBUILDER_H
 
+#include <vector>
 #include "raylib.h"
+
 
 
 // Represents an edge in the adjacency list
@@ -18,21 +20,66 @@ struct Edge {
 };
 
 // Represents a node (Waypoint) in the 3D aerial map
-struct Waypoint {
+struct Node {
     int id;
     Vector3 position;            // 3D coordinates in the arena
     std::vector<Edge> neighbors; // List of reachable waypoints (Adjacency List)
 };
 
-// The main container for the arena's navigation data
-struct NavigationGraph {
-    std::vector<Waypoint> nodes;
-    std::vector<std::vector<float>> distanceMatrix; // Pre-calculated costs (Floyd-Warshall)
+struct Obstacle {
+    Vector3 pos;
+    float radius;
 };
 
-extern NavigationGraph BuildGraphFromMap(const std::vector<Vector3>& rawPositions);
+// The main container for the arena's navigation data
+class NavigationGraph {
+private:
+    std::vector<Node> m_nodes;
+    std::vector<std::vector<float>> distanceMatrix;
+
+    int m_gridSizeX{}, m_gridSizeY{}, m_gridSizeZ{};
 
 
-extern void DrawNavigationGraph(const NavigationGraph& graph);
 
-extern std::vector<Vector3> GenerateRandomWaypoints(int count, Vector3 arenaSize);
+    std::vector<Matrix> m_nodeTransforms;
+    std::vector<Model> m_nodeModels;
+    bool m_isModelReady = false;
+
+    bool IsPointBlocked(Vector3 p, const std::vector<Obstacle>& obstacles);
+public:
+    NavigationGraph() = default;
+    ~NavigationGraph() = default;
+
+    void BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle>& obstacles);
+
+
+
+    void BuildDistanceMatrix();
+
+    float GetHeuristic(int nIdx, int targetIdx);
+
+
+    //float GetHeuristic(int startNodeIdx, int targetNodeIdx);
+
+    void PrepareGPUData();
+
+    void Draw(Vector3 cameraPos, float renderRadius) const;
+
+
+    [[nodiscard]] const std::vector<Node>& nodes() const {
+        return m_nodes;
+    }
+
+    [[nodiscard]] const std::vector<std::vector<float>>& distance_matrix() const {
+        return distanceMatrix;
+    }
+
+
+
+};
+
+
+
+
+
+

@@ -5,8 +5,11 @@
 #ifndef DOGFIGHT_ENGINE_H
 #define DOGFIGHT_ENGINE_H
 
+#include <memory>
+
 #include "raylib.h"
 #include "GraphBuilder.h"
+#include "Plane.h"
 
 
 class Engine {
@@ -21,9 +24,13 @@ private:
     void Update(float deltaTime);
     void Render();
 
-    Camera3D m_camera;
+    Camera3D m_camera{};
     bool m_shouldClose;
     NavigationGraph m_navGraph;
+    std::unique_ptr<Plane> m_plane;
+
+    Mesh m_obstacle;
+    Model m_obstacleModel;
 };
 
 
