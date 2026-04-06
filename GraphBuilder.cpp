@@ -3,11 +3,13 @@
 //
 #include "GraphBuilder.h"
 
+#include <algorithm>
 #include <map>
 
 #include "rlgl.h"
 #include "raymath.h"
 #include <omp.h>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include "Global.h"
@@ -16,7 +18,6 @@
 bool NavigationGraph::IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles) {
     for (const auto& obs : obstacles) {
         // Calculate squared distance between point p and obstacle center
-        // Using squared distance is faster as it avoids the sqrt() operation
         float distSq = Vector3DistanceSqr(p, obs.pos);
 
         // If distance is less than radius squared, the point is inside the obstacle
@@ -27,55 +28,70 @@ bool NavigationGraph::IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obs
     return false; // Point is clear
 }
 
+bool NavigationGraph::IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle>& obstacles) {
+    float distance = Vector3Distance(start, end);
+
+    // Determine number of samples based on distance to ensure no small obstacle is missed
+    int samples = std::max(10, (int)(distance / 1.0f));
+
+    for (int i = 1; i < samples; i++) {
+        // Linearly interpolate between start and end to get a sampling point
+        float t = (float)i / samples;
+        Vector3 checkPoint = Vector3Lerp(start, end, t);
+
+        // If any point along the line is inside an obstacle, the path is blocked
+        if (IsPointBlocked(checkPoint, obstacles)) return true;
+    }
+
+    return false; // Path is clear
+}
+
 void NavigationGraph::BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle> &obstacles) {
     m_nodes.clear();
     int idCounter = 0;
+    std::unordered_map<std::string, int> posToId;
 
-    // Help with identify node layer
+    // Unique key for O(1) coordinate
     auto getPosKey = [](Vector3 p) {
         return std::to_string((int)round(p.x)) + "," +
                std::to_string((int)round(p.y)) + "," +
                std::to_string((int)round(p.z));
     };
-    std::unordered_map<std::string, int> posToId;
 
-    // Init nodes
+    // Create all grid nodes
     for (float x = -arenaSize.x / 2; x <= arenaSize.x / 2; x += spacing) {
         for (float y = 0; y <= arenaSize.y; y += spacing) {
             for (float z = -arenaSize.z / 2; z <= arenaSize.z / 2; z += spacing) {
-                Vector3 pos = {x, y, z};
-                if (!IsPointBlocked(pos, obstacles)) {
-                    Node n;
-                    n.id = idCounter++;
-                    n.position = pos;
-                    m_nodes.push_back(n);
-                    posToId[getPosKey(pos)] = n.id;
-                }
+                Node n = { idCounter++, {x, y, z} };
+                m_nodes.push_back(n);
+                posToId[getPosKey(n.position)] = n.id;
             }
         }
     }
 
-    // Init Edges
+
+    // Connect neighbors with penalty-based weights
     #pragma omp parallel for schedule(dynamic)
-    for (auto & m_node : m_nodes) {
-        Vector3 p = m_node.position;
+    for (int i = 0; i < (int)m_nodes.size(); i++) {
+        Vector3 p = m_nodes[i].position;
 
         for (float dx = -spacing; dx <= spacing; dx += spacing) {
             for (float dy = -spacing; dy <= spacing; dy += spacing) {
                 for (float dz = -spacing; dz <= spacing; dz += spacing) {
                     if (dx == 0 && dy == 0 && dz == 0) continue;
 
-                    Vector3 neighborPos = { p.x + dx, p.y + dy, p.z + dz };
-                    std::string key = getPosKey(neighborPos);
+                    Vector3 nPos = { p.x + dx, p.y + dy, p.z + dz };
+                    std::string key = getPosKey(nPos);
 
-                    // אם קיים צומת במיקום השכן הזה
                     if (posToId.count(key)) {
-                        int neighborId = posToId[key];
-                        float dist = Vector3Distance(p, neighborPos);
+                        float weight = Vector3Distance(p, nPos);
 
-                        // אין צורך ב-critical כאן אם אנחנו מוסיפים רק לצד של ה-i הנוכחי
-                        // כי כל Thread מטפל ב-i אחר
-                        m_node.neighbors.push_back({neighborId, dist});
+                        // Apply high penalty if path is blocked instead of deleting
+                        if (IsPathBlocked(p, nPos, obstacles)) {
+                            weight *= 100.0f;
+                        }
+
+                        m_nodes[i].neighbors.push_back({posToId[key], weight});
                     }
                 }
             }
@@ -119,47 +135,122 @@ float NavigationGraph::GetHeuristic(int nIdx, int targetIdx) {
     return std::max(maxH, euclidean);
 }
 
-void NavigationGraph::PrepareGPUData() {
-    for (auto &model: m_nodeModels) {
-        UnloadModel(model);
+struct NodeSearchData {
+    float gScore = INFINITY; // Weight sum from the start
+    int parentIdx = -1; // Weight to the end
+};
+
+std::vector<Vector3> NavigationGraph::FindPathViaAStar(int startIdx, int targetIdx) {
+    // Ensure indices are valid and not the same
+    if (startIdx == -1 || targetIdx == -1 || startIdx == targetIdx) return {};
+
+    // Priority Queue stores pairs of fScore, nodeIndex
+    // std::greater ensures the node with the lowest fScore is always at the top.
+    typedef std::pair<float, int> PQElement;
+    std::priority_queue<PQElement, std::vector<PQElement>, std::greater<PQElement>> openSet;
+
+    // Stores gScore and parent info for each node during the search
+    std::unordered_map<int, NodeSearchData> searchMap;
+
+    // Init start node
+    searchMap[startIdx].gScore = 0;
+    float fStart = GetHeuristic(startIdx, targetIdx);
+    openSet.push({fStart, startIdx});
+
+    while (!openSet.empty()) {
+        // Get the node with the lowest estimated total cost (fScore)
+        int current = openSet.top().second;
+        openSet.pop();
+
+        // Target reached and reconstruct path by following parent pointers back to start
+        if (current == targetIdx) {
+            std::vector<Vector3> path;
+            int temp = current;
+            while (temp != -1) {
+                path.push_back(m_nodes[temp].position);
+                temp = searchMap[temp].parentIdx;
+            }
+            std::reverse(path.begin(), path.end());
+            return path;
+        }
+
+        // Evaluate all neighbors of the current node
+        for (auto& edge : m_nodes[current].neighbors) {
+            // Calculate distance from start to neighbor through current node
+            float tentative_gScore = searchMap[current].gScore + edge.weight;
+
+            // If this path is better than any previously found path to this neighbor
+            if (tentative_gScore < searchMap[edge.target].gScore) {
+                searchMap[edge.target].parentIdx = current;
+                searchMap[edge.target].gScore = tentative_gScore;
+
+                // fScore = cost to reach node (g) + estimated cost to target (h)
+                float fScore = tentative_gScore + GetHeuristic(edge.target, targetIdx);
+                openSet.push({fScore, edge.target});
+            }
+        }
     }
+
+    return {}; // No path found
+}
+
+// Finds the index of the node closest to a given 3D position
+int NavigationGraph::GetClosestNode(Vector3 position) {
+    int closestIdx = -1;
+    float minOutsideDist = INFINITY;
+
+    // Iterate through all nodes to find the one with the smallest distance
+    for (int i = 0; i < (int)m_nodes.size(); i++) {
+        // Use squared distance for performance (avoids expensive sqrt() operation)
+        float d = Vector3DistanceSqr(position, m_nodes[i].position);
+
+        // Update closest node if a nearer one is found
+        if (d < minOutsideDist) {
+            minOutsideDist = d;
+            closestIdx = i;
+        }
+    }
+
+    return closestIdx;
+}
+
+
+
+void NavigationGraph::PrepareGPUData() {
+    // Clear previous GPU models to free VRAM
+    for (auto &model: m_nodeModels) UnloadModel(model);
     m_nodeModels.clear();
 
     if (m_nodes.empty()) return;
 
-
+    // Base geometry for a single node
     Mesh sphere = GenMeshSphere(0.2f, 8, 8);
-
-
     bool hasIndices = (sphere.indices != nullptr);
-    int indexCount = hasIndices ? (sphere.triangleCount * 3) : 0;
+    int indexCount = (sphere.triangleCount * 3);
 
+    // BATCHING: Grouping multiple nodes into a single mesh to reduce Draw Calls
     const int nodesPerMesh = 200;
 
     for (int startIdx = 0; startIdx < (int) m_nodes.size(); startIdx += nodesPerMesh) {
-        int endIdx = ((startIdx + nodesPerMesh) < (int) m_nodes.size())
-                         ? (startIdx + nodesPerMesh)
-                         : (int) m_nodes.size();
+        int endIdx = std::min(startIdx + nodesPerMesh, (int)m_nodes.size());
         int currentChunkSize = endIdx - startIdx;
 
-        Mesh chunkMesh = {0};
+        // Allocate memory for the merged mesh (Vertex Buffer)
+        Mesh chunkMesh = { 0 };
         chunkMesh.vertexCount = sphere.vertexCount * currentChunkSize;
         chunkMesh.triangleCount = sphere.triangleCount * currentChunkSize;
+        chunkMesh.vertices = (float *)MemAlloc(chunkMesh.vertexCount * 3 * sizeof(float));
+        chunkMesh.normals = (float *)MemAlloc(chunkMesh.vertexCount * 3 * sizeof(float));
+        if (hasIndices) chunkMesh.indices = (unsigned short *)MemAlloc(chunkMesh.triangleCount * 3 * sizeof(unsigned short));
 
-
-        chunkMesh.vertices = (float *) MemAlloc(chunkMesh.vertexCount * 3 * sizeof(float));
-        chunkMesh.normals = (float *) MemAlloc(chunkMesh.vertexCount * 3 * sizeof(float));
-        if (hasIndices) {
-            chunkMesh.indices = (unsigned short *) MemAlloc(chunkMesh.triangleCount * 3 * sizeof(unsigned short));
-        }
-
+        // Fill the buffers by offsetting base sphere vertices to node positions
         for (int i = 0; i < currentChunkSize; i++) {
             int nodeIdx = startIdx + i;
             int vOffset = i * sphere.vertexCount;
-            int tOffset = i * sphere.triangleCount;
-
+            int iOffset = i * indexCount;
 
             for (int j = 0; j < sphere.vertexCount; j++) {
+                // Copy and Translate vertex to its world position
                 chunkMesh.vertices[(vOffset + j) * 3 + 0] = sphere.vertices[j * 3 + 0] + m_nodes[nodeIdx].position.x;
                 chunkMesh.vertices[(vOffset + j) * 3 + 1] = sphere.vertices[j * 3 + 1] + m_nodes[nodeIdx].position.y;
                 chunkMesh.vertices[(vOffset + j) * 3 + 2] = sphere.vertices[j * 3 + 2] + m_nodes[nodeIdx].position.z;
@@ -171,22 +262,22 @@ void NavigationGraph::PrepareGPUData() {
                 }
             }
 
-
             if (hasIndices) {
+                // Shift indices to point to the correct vertices in the merged buffer
                 for (int j = 0; j < indexCount; j++) {
-                    chunkMesh.indices[tOffset * 3 + j] = (unsigned short) (sphere.indices[j] + vOffset);
+                    chunkMesh.indices[iOffset + j] = (unsigned short)(sphere.indices[j] + vOffset);
                 }
             }
         }
 
-
+        // Upload combined data to VRAM and load into a Model
         UploadMesh(&chunkMesh, false);
         Model model = LoadModelFromMesh(chunkMesh);
         model.materials[0].maps[MATERIAL_MAP_ALBEDO].color = RED;
         m_nodeModels.push_back(model);
     }
 
-    UnloadMesh(sphere);
+    UnloadMesh(sphere); // Free the base template mesh from RAM
     m_isModelReady = true;
 }
 
@@ -195,15 +286,16 @@ void NavigationGraph::Draw(Vector3 cameraPos, float renderRadius) const {
 
     float radiusSq = renderRadius * renderRadius;
 
+    // Use raylib's lower-level rendering for immediate line drawing
     rlBegin(RL_LINES);
     rlColor4ub(180, 180, 180, 120);
 
     for (size_t i = 0; i < m_nodes.size(); i++) {
-        if (Vector3DistanceSqr(m_nodes[i].position, cameraPos) > radiusSq) {
-            continue;
-        }
+        // FRUSTUM/DISTANCE CULLING: Skip drawing edges for distant nodes
+        if (Vector3DistanceSqr(m_nodes[i].position, cameraPos) > radiusSq) continue;
 
         for (const auto &edge: m_nodes[i].neighbors) {
+            // Avoid drawing the same edge twice (check target > i)
             if (edge.target > (int) i) {
                 rlVertex3f(m_nodes[i].position.x, m_nodes[i].position.y, m_nodes[i].position.z);
                 rlVertex3f(m_nodes[edge.target].position.x, m_nodes[edge.target].position.y,
@@ -213,6 +305,7 @@ void NavigationGraph::Draw(Vector3 cameraPos, float renderRadius) const {
     }
     rlEnd();
 
+    // Render the batched node models
     for (const auto &model: m_nodeModels) {
         DrawModel(model, {0, 0, 0}, 1.0f, WHITE);
     }

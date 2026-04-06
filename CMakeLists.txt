@@ -31,6 +31,8 @@ add_executable(Dogfight
         GraphBuilder.h GraphBuilder.cpp
         Plane.cpp Plane.h
         Global.cpp
+        Map.cpp
+        Map.h
 )
 
 

@@ -8,6 +8,7 @@
 #include <ostream>
 
 #include "Global.h"
+#include "raymath.h"
 
 
 /**
@@ -27,25 +28,41 @@ Engine::Engine() {
 
     DisableCursor();
 
-    std::vector<Obstacle> obstacles;
+
 
 
     Obstacle sphereObs;
-    sphereObs.pos = { 50.0f, 0.0f, 0.0f };
-    sphereObs.radius = 10.0f;
-    //obstacles.push_back(sphereObs);
+    sphereObs.pos = {-240, 0, -150};
+    sphereObs.radius = 5.0f;
+    m_obstacles.push_back(sphereObs);
+
+    Obstacle sphereObs1;
+    sphereObs1.pos = {-240, 0, -135};
+    sphereObs1.radius = 15.0f;
+    m_obstacles.push_back(sphereObs1);
 
     m_shouldClose = false;
-    m_obstacle = GenMeshSphere(sphereObs.radius, 32, 32);
-    m_obstacleModel = LoadModelFromMesh(m_obstacle);
 
 
 
-    m_navGraph.BuildGraphFromMap({500, 100, 500}, 10, obstacles);
+    Vector3 mapSize = {500, 100, 500};
+    m_navGraph.BuildGraphFromMap(mapSize, 10, m_obstacles);
     m_navGraph.PrepareGPUData();
     m_navGraph.BuildDistanceMatrix();
 
-    m_plane = std::make_unique<Plane>(Vector3(), (Vector3){0, 5, 5}, (Vector3){0,0,0});
+
+
+    int startNodeIdx = m_navGraph.nodes().size() / 2;
+
+    m_plane = std::make_unique<Plane>(m_navGraph.nodes()[startNodeIdx].position, (Vector3){0, 5, 5}, (Vector3){0,0,0});
+    m_plane->SetDestination(10, m_navGraph);
+
+
+
+
+
+    Vector3 heightMapSize = Vector3(mapSize.x * 5, mapSize.y *5, mapSize.z * 5);
+    m_map.Load("HeightMap.png", heightMapSize  , "MapTexture.png");
 }
 
 /**
@@ -72,14 +89,20 @@ void Engine::ProcessInput() {
 void Engine::Update(float deltaTime) {
 
     UpdateCamera(&m_camera, CAMERA_FREE);
+    UpdateCamera(&m_camera, CAMERA_FREE);
+    UpdateCamera(&m_camera, CAMERA_FREE);
+
+    m_map.UpdateFog(m_camera.position);
+
+    std::cout << m_camera.position.x << " " <<m_camera.position.z << std::endl;
+
+
+
+    m_plane->Update(deltaTime);
 
 
 
 
-    m_plane->Update(deltaTime, m_navGraph);
-
-
-    std::cout << m_navGraph.GetHeuristic(0, 600) << std::endl;
 
 }
 
@@ -88,7 +111,7 @@ void Engine::Update(float deltaTime) {
  */
 void Engine::Render() {
     BeginDrawing();
-    ClearBackground(LIGHTGRAY);
+    ClearBackground(SKYBLUE);
 
     BeginMode3D(m_camera);
 
@@ -100,7 +123,15 @@ void Engine::Render() {
     DrawCylinderEx({ 0, 0, 0 }, { 0, axisLength, 0 }, axisThick, axisThick, slices, GREEN);
     DrawCylinderEx({ 0, 0, 0 }, { 0, 0, axisLength }, axisThick, axisThick, slices, BLUE);
 
-    DrawModel(m_obstacleModel, { 0, 0, 0 }, 1.0f, GRAY);
+    for (auto obstacle: m_obstacles) {
+        DrawSphere(obstacle.pos, obstacle.radius, GRAY);
+    }
+
+
+
+    DrawSphere(m_navGraph.nodes()[10].position, 1, GREEN);
+
+
 
 
     DrawGrid(20, 1.0f);
@@ -111,7 +142,7 @@ void Engine::Render() {
     m_plane->Draw();
 
 
-
+    m_map.Draw();
 
 
 

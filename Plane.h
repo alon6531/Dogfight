@@ -6,6 +6,8 @@
 #define DOGFIGHT_PLANE_H
 
 
+#include <vector>
+
 #include "raylib.h"
 
 class Plane {
@@ -21,19 +23,23 @@ private:
     // int AmmoCount;
     // enum CurrentState;
 
-    float m_maxSpeed = 50.0f;
+    float m_speed = 50.0f;
+    std::vector<Vector3> m_path; // המסלול המחושב
+    int m_targetPathIdx = 0;
 
 public:
     Plane(const Vector3 &position, const Vector3 &velocity, const Vector3 &acceleration);
 
+    void SetDestination(int targetNodeIdx, class NavigationGraph &graph);
+
 
     ~Plane() = default;
 
-    void Update(float deltaTime, class NavigationGraph& graph);
+    void Update(float deltaTime);
     void Draw() const;
 
 
-    [[nodiscard]] Vector3 m_position1() const {
+    [[nodiscard]] Vector3 position() const {
         return m_position;
     }
 
@@ -41,7 +47,7 @@ public:
         this->m_position = m_position;
     }
 
-    [[nodiscard]] Vector3 m_velocity1() const {
+    [[nodiscard]] Vector3 velocity() const {
         return m_velocity;
     }
 
@@ -49,7 +55,7 @@ public:
         this->m_velocity = m_velocity;
     }
 
-    [[nodiscard]] Vector3 m_acceleration1() const {
+    [[nodiscard]] Vector3 acceleration() const {
         return m_acceleration;
     }
 

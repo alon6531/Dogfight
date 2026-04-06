@@ -22,22 +22,42 @@ Plane::Plane(const Vector3 &position, const Vector3 &velocity, const Vector3 &ac
 
 }
 
-void Plane::Update(const float deltaTime, NavigationGraph& graph) {
+void Plane::SetDestination(int targetNodeIdx, NavigationGraph& graph) {
 
-    Vector3 closestNode = {};
-    float minDistance = 999999.0f;
+    int startNodeIdx = graph.GetClosestNode(m_position);
 
-    m_acceleration = Vector3Add(m_acceleration, Vector3Scale(m_velocity, deltaTime));
 
-    for (auto& node : graph.nodes()) {
-        float dist = Vector3Distance(m_acceleration, node.position);
-        if (dist < minDistance) {
-            minDistance = dist;
-            closestNode = Vector3(node.position);
-        }
+    m_path = graph.FindPathViaAStar(startNodeIdx, targetNodeIdx);
+
+
+    m_targetPathIdx = 0;
+}
+
+void Plane::Update(float deltaTime) {
+    // Check if the path is empty or if we have already reached the final destination
+    if (m_path.empty() || m_targetPathIdx >= m_path.size()) return;
+
+    // Get the position of the current target waypoint in the sequence
+    Vector3 targetPos = m_path[m_targetPathIdx];
+
+    // Calculate the direction vector and the remaining distance to the current waypoint
+    Vector3 direction = Vector3Subtract(targetPos, m_position);
+    float distToTarget = Vector3Length(direction);
+
+    // If close enough to the current waypoint, switch to the next one in the path
+    if (distToTarget < 0.5f) {
+        m_targetPathIdx++;
     }
-    m_position = closestNode;
+    else {
+        // Normalize the direction to ensure consistent movement speed
+        direction = Vector3Normalize(direction);
 
+        // Update the plane's position based on direction, constant speed, and frame time
+        m_position = Vector3Add(m_position, Vector3Scale(direction, m_speed * deltaTime));
+
+        // Optional: Update the model transformation to face the direction of flight
+        // m_model.transform = MatrixLookAt(m_position, targetPos, {0, 1, 0});
+    }
 }
 
 void Plane::Draw() const {

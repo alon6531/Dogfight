@@ -45,7 +45,10 @@ private:
     std::vector<Model> m_nodeModels;
     bool m_isModelReady = false;
 
-    bool IsPointBlocked(Vector3 p, const std::vector<Obstacle>& obstacles);
+    static bool IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles);
+
+    static bool IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle> &obstacles);
+
 public:
     NavigationGraph() = default;
     ~NavigationGraph() = default;
@@ -60,6 +63,10 @@ public:
 
 
     //float GetHeuristic(int startNodeIdx, int targetNodeIdx);
+
+    std::vector<Vector3> FindPathViaAStar(int startIdx, int targetIdx);
+
+    int GetClosestNode(Vector3 position);
 
     void PrepareGPUData();
 

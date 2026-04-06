@@ -10,6 +10,7 @@
 #include "raylib.h"
 #include "GraphBuilder.h"
 #include "Plane.h"
+#include "Map.h"
 
 
 class Engine {
@@ -29,8 +30,9 @@ private:
     NavigationGraph m_navGraph;
     std::unique_ptr<Plane> m_plane;
 
-    Mesh m_obstacle;
-    Model m_obstacleModel;
+    std::vector<Obstacle> m_obstacles;
+    Map m_map;
+
 };
 
 
