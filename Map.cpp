@@ -3,61 +3,58 @@
 
 void Map::Load(const char* heightmapPath, Vector3 size, const char* texturePath) {
     m_size = size;
-    m_position = { -size.x / 2.0f, -size.y / 2.0f, -size.z / 2.0f };
+
+
+    m_position = { -size.x / 2.0f, -size.y * 0.7f, -size.z / 2.0f };
 
     m_heightmapImage = LoadImage(heightmapPath);
+
+    if (m_heightmapImage.width > 512) {
+        ImageResize(&m_heightmapImage, 512, 512);
+    }
+
     Mesh mesh = GenMeshHeightmap(m_heightmapImage, m_size);
     m_model = LoadModelFromMesh(mesh);
     m_texture = LoadTexture(texturePath);
     m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = m_texture;
 
     m_shader = LoadShader("resources/shaders/lighting.vs", "resources/shaders/fog.fs");
-
     m_shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(m_shader, "viewPos");
     m_fogDensityLoc = GetShaderLocation(m_shader, "fogDensity");
 
-
     float fogColor[4] = { 0.4f, 0.75f, 1.0f, 1.0f };
     SetShaderValue(m_shader, GetShaderLocation(m_shader, "fogColor"), fogColor, SHADER_UNIFORM_VEC4);
-
-
     m_model.materials[0].shader = m_shader;
+    m_fogDensity = 0.1f;
 
     m_isLoaded = true;
-
-
-
-    m_fogDensity = 0.1f;
 }
 
 void Map::UpdateFog(Vector3 cameraPos) {
     if (!m_isLoaded) return;
-
-
     SetShaderValue(m_shader, m_shader.locs[SHADER_LOC_VECTOR_VIEW], &cameraPos, SHADER_UNIFORM_VEC3);
-
-
     SetShaderValue(m_shader, m_fogDensityLoc, &m_fogDensity, SHADER_UNIFORM_FLOAT);
 }
 
+// Map.cpp
 bool Map::IsBelowGround(Vector3 position) const {
     if (!m_isLoaded) return false;
 
-
+    // Use m_position as origin — matches exactly where DrawModel places the mesh
     float xRel = (position.x - m_position.x) / m_size.x;
     float zRel = (position.z - m_position.z) / m_size.z;
 
-    int px = (int)(xRel * m_heightmapImage.width);
-    int pz = (int)(zRel * m_heightmapImage.height);
+    if (xRel < 0.0f || xRel > 1.0f || zRel < 0.0f || zRel > 1.0f) return false;
 
+    int px = (int)(xRel * (m_heightmapImage.width - 1));
+    int pz = (int)(zRel * (m_heightmapImage.height - 1));
 
-    if (px < 0 || px >= m_heightmapImage.width || pz < 0 || pz >= m_heightmapImage.height) return false;
+    Color col = GetImageColor(m_heightmapImage, px, pz);
+    unsigned char heightVal = col.r;
 
+    float groundHeight = m_position.y + ((float)heightVal / 255.0f) * m_size.y;
 
-    Color pixel = GetImageColor(m_heightmapImage, px, pz);
-    float groundHeight = (pixel.r / 255.0f) * m_size.y;
-
-    return position.y < groundHeight;
+    return position.y < groundHeight + 1.0f; // +1 epsilon to catch surface nodes
 }
 
 void Map::Draw() const {

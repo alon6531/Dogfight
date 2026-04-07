@@ -13,67 +13,78 @@
 #include <string>
 #include <unordered_map>
 #include "Global.h"
+#include "Map.h"
 
-
-bool NavigationGraph::IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles) {
+int NavigationGraph::IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles) {
     for (const auto& obs : obstacles) {
-        // Calculate squared distance between point p and obstacle center
         float distSq = Vector3DistanceSqr(p, obs.pos);
-
-        // If distance is less than radius squared, the point is inside the obstacle
         if (distSq < (obs.radius * obs.radius)) {
-            return true;
+            return 1;
         }
     }
-    return false; // Point is clear
+    return 0;
 }
 
-bool NavigationGraph::IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle>& obstacles) {
+bool NavigationGraph::IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle>& obstacles, const Map* gameMap) {
     float distance = Vector3Distance(start, end);
-
-    // Determine number of samples based on distance to ensure no small obstacle is missed
     int samples = std::max(10, (int)(distance / 1.0f));
 
     for (int i = 1; i < samples; i++) {
-        // Linearly interpolate between start and end to get a sampling point
         float t = (float)i / samples;
         Vector3 checkPoint = Vector3Lerp(start, end, t);
 
-        // If any point along the line is inside an obstacle, the path is blocked
         if (IsPointBlocked(checkPoint, obstacles)) return true;
+        if (gameMap != nullptr && gameMap->IsBelowGround(checkPoint)) return true;
     }
-
-    return false; // Path is clear
+    return false;
 }
 
-void NavigationGraph::BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle> &obstacles) {
+void NavigationGraph::BuildNodes(Vector3 arenaSize, float spacing, const Map& gameMap, int& idCounter, std::unordered_map<std::string, int>& posToId) {
     m_nodes.clear();
-    int idCounter = 0;
-    std::unordered_map<std::string, int> posToId;
 
-    // Unique key for O(1) coordinate
-    auto getPosKey = [](Vector3 p) {
+    auto getPosKey = [](Vector3 p) -> std::string {
         return std::to_string((int)round(p.x)) + "," +
                std::to_string((int)round(p.y)) + "," +
                std::to_string((int)round(p.z));
     };
 
-    // Create all grid nodes
-    for (float x = -arenaSize.x / 2; x <= arenaSize.x / 2; x += spacing) {
-        for (float y = 0; y <= arenaSize.y; y += spacing) {
-            for (float z = -arenaSize.z / 2; z <= arenaSize.z / 2; z += spacing) {
-                Node n = { idCounter++, {x, y, z} };
+
+    float startX = -arenaSize.x / 2.0f;
+    float endX = arenaSize.x / 2.0f;
+    float startZ = -arenaSize.z / 2.0f;
+    float endZ = arenaSize.z / 2.0f;
+
+
+    float startY = gameMap.GetPosition().y;
+    float endY = startY + arenaSize.y;
+
+    for (float x = startX; x <= endX + 0.1f; x += spacing) {
+        for (float z = startZ; z <= endZ + 0.1f; z += spacing) {
+            for (float y = startY; y <= endY + 0.1f; y += spacing) {
+
+                Vector3 currentPos = { x, y, z };
+
+                if (gameMap.IsBelowGround(currentPos)) continue;
+
+                Node n = { idCounter++, currentPos };
                 m_nodes.push_back(n);
-                posToId[getPosKey(n.position)] = n.id;
+                posToId[getPosKey(currentPos)] = n.id;
             }
         }
     }
+}
 
+void NavigationGraph::BuildEdges(Vector3 arenaSize, float spacing, const Map& gameMap, const std::vector<Obstacle> &obstacles, std::unordered_map<std::string, int>& posToId) {
+    auto getPosKey = [](Vector3 p) -> std::string {
+        return std::to_string((int)round(p.x)) + "," +
+               std::to_string((int)round(p.y)) + "," +
+               std::to_string((int)round(p.z));
+    };
 
-    // Connect neighbors with penalty-based weights
-    #pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < (int)m_nodes.size(); i++) {
         Vector3 p = m_nodes[i].position;
+
 
         for (float dx = -spacing; dx <= spacing; dx += spacing) {
             for (float dy = -spacing; dy <= spacing; dy += spacing) {
@@ -86,9 +97,10 @@ void NavigationGraph::BuildGraphFromMap(Vector3 arenaSize, float spacing, const 
                     if (posToId.count(key)) {
                         float weight = Vector3Distance(p, nPos);
 
-                        // Apply high penalty if path is blocked instead of deleting
-                        if (IsPathBlocked(p, nPos, obstacles)) {
-                            weight *= 100.0f;
+                        if (IsPathBlocked(p, nPos, {}, &gameMap)) continue;
+
+                        if (IsPathBlocked(p, nPos, obstacles, &gameMap)) {
+                            weight *= 2.0f;
                         }
 
                         m_nodes[i].neighbors.push_back({posToId[key], weight});
@@ -97,6 +109,17 @@ void NavigationGraph::BuildGraphFromMap(Vector3 arenaSize, float spacing, const 
             }
         }
     }
+}
+
+void NavigationGraph::BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle> &obstacles, const Map& gameMap) {
+    m_nodes.clear();
+    int idCounter = 0;
+    std::unordered_map<std::string, int> posToId;
+
+    BuildNodes(arenaSize, spacing, gameMap, idCounter, posToId);
+
+    BuildEdges(arenaSize, spacing, gameMap, obstacles, posToId);
+
 }
 
 

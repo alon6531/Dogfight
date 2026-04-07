@@ -24,7 +24,7 @@ private:
     // enum CurrentState;
 
     float m_speed = 50.0f;
-    std::vector<Vector3> m_path; // המסלול המחושב
+    std::vector<Vector3> m_path;
     int m_targetPathIdx = 0;
 
 public:

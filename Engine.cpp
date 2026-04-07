@@ -37,32 +37,38 @@ Engine::Engine() {
     m_obstacles.push_back(sphereObs);
 
     Obstacle sphereObs1;
-    sphereObs1.pos = {-240, 0, -135};
-    sphereObs1.radius = 15.0f;
+    sphereObs1.pos = {170, -100, 170};
+    sphereObs1.radius = 70.0f;
     m_obstacles.push_back(sphereObs1);
+
+
 
     m_shouldClose = false;
 
+    Vector3 fullMapSize = { 500, 500, 500 };
+    m_map.Load("HeightMap.png", fullMapSize  , "MapTexture.png");
 
 
-    Vector3 mapSize = {500, 100, 500};
-    m_navGraph.BuildGraphFromMap(mapSize, 10, m_obstacles);
+
+
+    m_navGraph.BuildGraphFromMap(fullMapSize, 30, m_obstacles, m_map);
     m_navGraph.PrepareGPUData();
     m_navGraph.BuildDistanceMatrix();
 
 
 
-    int startNodeIdx = m_navGraph.nodes().size() / 2;
+    m_starPoint = m_navGraph.nodes()[0].position;
+    m_camera.position =m_starPoint;
+    m_targetPoint = m_navGraph.nodes()[m_navGraph.GetClosestNode(Vector3(240, -400, 230))].position;
 
-    m_plane = std::make_unique<Plane>(m_navGraph.nodes()[startNodeIdx].position, (Vector3){0, 5, 5}, (Vector3){0,0,0});
-    m_plane->SetDestination(10, m_navGraph);
+    m_plane = std::make_unique<Plane>(m_starPoint, (Vector3){0, 0, 0}, (Vector3){0,0,0});
+    m_plane->SetDestination(m_navGraph.GetClosestNode(m_targetPoint), m_navGraph);
 
 
 
 
 
-    Vector3 heightMapSize = Vector3(mapSize.x * 5, mapSize.y *5, mapSize.z * 5);
-    m_map.Load("HeightMap.png", heightMapSize  , "MapTexture.png");
+
 }
 
 /**
@@ -94,7 +100,9 @@ void Engine::Update(float deltaTime) {
 
     m_map.UpdateFog(m_camera.position);
 
-    std::cout << m_camera.position.x << " " <<m_camera.position.z << std::endl;
+
+
+    std::cout << m_camera.position.x << " " <<  m_camera.position.z << std::endl;
 
 
 
@@ -128,8 +136,8 @@ void Engine::Render() {
     }
 
 
-
-    DrawSphere(m_navGraph.nodes()[10].position, 1, GREEN);
+    DrawCube(m_starPoint, 10, 5, 10, GRAY);
+    DrawSphere(m_targetPoint, 1, GREEN);
 
 
 

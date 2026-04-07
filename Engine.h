@@ -33,6 +33,9 @@ private:
     std::vector<Obstacle> m_obstacles;
     Map m_map;
 
+    Vector3 m_starPoint;
+    Vector3 m_targetPoint;
+
 };
 
 

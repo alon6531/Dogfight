@@ -4,6 +4,8 @@
 
 #ifndef DOGFIGHT_GRAPHBUILDER_H
 #define DOGFIGHT_GRAPHBUILDER_H
+#include <functional>
+#include <bits/basic_string.h>
 
 
 #endif //DOGFIGHT_GRAPHBUILDER_H
@@ -45,15 +47,21 @@ private:
     std::vector<Model> m_nodeModels;
     bool m_isModelReady = false;
 
-    static bool IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles);
+    static int IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles);
 
-    static bool IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle> &obstacles);
+    static bool IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle> &obstacles, const class Map *gameMap);
+
+    void BuildNodes(Vector3 arenaSize, float spacing, const Map &gameMap, int &idCounter, std::unordered_map<std::string, int> &posToId);
+
+    void BuildEdges(Vector3 arenaSize, float spacing, const Map &gameMap,
+                    const std::vector<Obstacle> &obstacles, std::unordered_map<std::string, int> &posToId);
 
 public:
     NavigationGraph() = default;
     ~NavigationGraph() = default;
 
-    void BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle>& obstacles);
+    void BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle> &obstacles, const Map &gameMap);
+
 
 
 
