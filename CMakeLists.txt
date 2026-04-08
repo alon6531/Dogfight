@@ -33,6 +33,12 @@ add_executable(Dogfight
         Global.cpp
         Map.cpp
         Map.h
+        FSM.cpp
+        FSM.h
+        DStarLite.cpp
+        DStarLite.h
+        MPCController.cpp
+        MPCController.h
 )
 
 

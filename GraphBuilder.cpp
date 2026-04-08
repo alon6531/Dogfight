@@ -220,20 +220,21 @@ std::vector<Vector3> NavigationGraph::FindPathViaAStar(int startIdx, int targetI
 // Finds the index of the node closest to a given 3D position
 int NavigationGraph::GetClosestNode(Vector3 position) {
     int closestIdx = -1;
-    float minOutsideDist = INFINITY;
+    float minDist = INFINITY;
 
-    // Iterate through all nodes to find the one with the smallest distance
     for (int i = 0; i < (int)m_nodes.size(); i++) {
-        // Use squared distance for performance (avoids expensive sqrt() operation)
-        float d = Vector3DistanceSqr(position, m_nodes[i].position);
+        Vector3 np = m_nodes[i].position;
+        float xzDistSq = pow(np.x - position.x, 2) + pow(np.z - position.z, 2);
+        float yDistSq = pow(np.y - position.y, 2);
 
-        // Update closest node if a nearer one is found
-        if (d < minOutsideDist) {
-            minOutsideDist = d;
+        // קנס על הפרש גובה - גורם למטוס להיצמד למישור שלו בחיפוש הצומת
+        float totalDistSq = xzDistSq + (yDistSq * 15.0f);
+
+        if (totalDistSq < minDist) {
+            minDist = totalDistSq;
             closestIdx = i;
         }
     }
-
     return closestIdx;
 }
 

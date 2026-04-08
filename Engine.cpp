@@ -28,47 +28,6 @@ Engine::Engine() {
 
     DisableCursor();
 
-
-
-
-    Obstacle sphereObs;
-    sphereObs.pos = {-240, 0, -150};
-    sphereObs.radius = 5.0f;
-    m_obstacles.push_back(sphereObs);
-
-    Obstacle sphereObs1;
-    sphereObs1.pos = {170, -100, 170};
-    sphereObs1.radius = 70.0f;
-    m_obstacles.push_back(sphereObs1);
-
-
-
-    m_shouldClose = false;
-
-    Vector3 fullMapSize = { 500, 500, 500 };
-    m_map.Load("HeightMap.png", fullMapSize  , "MapTexture.png");
-
-
-
-
-    m_navGraph.BuildGraphFromMap(fullMapSize, 30, m_obstacles, m_map);
-    m_navGraph.PrepareGPUData();
-    m_navGraph.BuildDistanceMatrix();
-
-
-
-    m_starPoint = m_navGraph.nodes()[0].position;
-    m_camera.position =m_starPoint;
-    m_targetPoint = m_navGraph.nodes()[m_navGraph.GetClosestNode(Vector3(240, -400, 230))].position;
-
-    m_plane = std::make_unique<Plane>(m_starPoint, (Vector3){0, 0, 0}, (Vector3){0,0,0});
-    m_plane->SetDestination(m_navGraph.GetClosestNode(m_targetPoint), m_navGraph);
-
-
-
-
-
-
 }
 
 /**
@@ -88,6 +47,51 @@ void Engine::ProcessInput() {
 
 }
 
+void Engine::InitializeSystem() {
+    Obstacle sphereObs;
+    sphereObs.pos = {-240, 0, -150};
+    sphereObs.radius = 5.0f;
+    m_obstacles.push_back(sphereObs);
+
+    Obstacle sphereObs1;
+    sphereObs1.pos = {170, -100, 170};
+    sphereObs1.radius = 70.0f;
+    m_obstacles.push_back(sphereObs1);
+
+
+
+    m_shouldClose = false;
+
+    Vector3 fullMapSize = { 1500, 750, 1500 };
+    m_map.Load("HeightMap.png", fullMapSize  , "MapTexture.png");
+
+
+
+
+    m_navGraph.BuildGraphFromMap(fullMapSize, 50, m_obstacles, m_map);
+    m_navGraph.PrepareGPUData();
+    m_navGraph.BuildDistanceMatrix();
+
+
+    int startNodeIdx = m_navGraph.GetClosestNode({600, -270, 200});
+    m_starPoint = m_navGraph.nodes()[startNodeIdx].position;
+
+    int targetNodeIdx = m_navGraph.GetClosestNode({100, -24, 50});
+    m_targetPoint = m_navGraph.nodes()[targetNodeIdx].position;
+
+    m_camera.position = { m_starPoint.x, m_starPoint.y + 50, m_starPoint.z - 100 };
+    m_camera.target = m_starPoint;
+
+    m_plane = std::make_unique<Plane>(m_starPoint, Vector3(5, 5, 5), Vector3(0, 0, 0), PINK, m_navGraph);
+    m_enemy = std::make_unique<Plane>(Vector3(-100, -120, -150), Vector3(), Vector3(), YELLOW, m_navGraph);
+    m_fsm = std::make_unique<FSM>(m_navGraph);
+    m_mpcController = std::make_unique<MPCController>((MPCParameters){12, 0.15f, 50.0f, 2.5f, 1.0f});
+
+
+
+
+}
+
 /**
  * Update every tick of the simulator
  * @param deltaTime
@@ -98,15 +102,18 @@ void Engine::Update(float deltaTime) {
     UpdateCamera(&m_camera, CAMERA_FREE);
     UpdateCamera(&m_camera, CAMERA_FREE);
 
+    // Vector3 planePos = m_plane->position();
+    // m_camera.target = planePos;
+    // m_camera.position = Vector3Add(planePos, {0, 30, -60});
+
+    m_fsm->Update(*m_plane, *m_enemy, m_targetPoint, deltaTime);
+
+
     m_map.UpdateFog(m_camera.position);
+    m_plane->Update(m_enemy->position(), deltaTime, *m_mpcController);
+    m_enemy->Update(m_plane->position(), deltaTime, *m_mpcController);
 
-
-
-    std::cout << m_camera.position.x << " " <<  m_camera.position.z << std::endl;
-
-
-
-    m_plane->Update(deltaTime);
+    //std::cout << "Camera pos: " <<  m_camera.position.x << " " <<  m_camera.position.y << " " <<  m_camera.position.z << std::endl;
 
 
 
@@ -136,7 +143,7 @@ void Engine::Render() {
     }
 
 
-    DrawCube(m_starPoint, 10, 5, 10, GRAY);
+    DrawCube(m_starPoint, 10, 2, 10, GREEN);
     DrawSphere(m_targetPoint, 1, GREEN);
 
 
@@ -148,7 +155,7 @@ void Engine::Render() {
     m_navGraph.Draw(m_camera.position, 100);
 
     m_plane->Draw();
-
+    m_enemy->Draw();
 
     m_map.Draw();
 
@@ -167,6 +174,13 @@ void Engine::Render() {
 }
 
 void Engine::Run() {
+
+    this->InitializeSystem();
+
+
+
+
+
     while (!m_shouldClose) {
 
         float dt = GetFrameTime();
