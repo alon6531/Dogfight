@@ -1,131 +1,106 @@
-//
-// Created by User on 03/04/2026.
-//
-
 #ifndef DOGFIGHT_PLANE_H
 #define DOGFIGHT_PLANE_H
 
-
+#include <deque>
 #include <memory>
 #include <vector>
 
 #include "raylib.h"
 #include "FSM.h"
 
+#define NORMAL_SPEED 100.0f
+#define EVADE_SPEED 150.0f
+#define EVADE_TURN_SPEED 120.0f
+
+// Forward declarations
 class DStarLite;
 class NavigationGraph;
 class MPCController;
 
-#define DELAY_TIME 0.2f
-
 class Plane {
+public:
+    Plane(const Vector3 &position, const Vector3 &velocity, const Vector3 &acceleration, const Color& color, NavigationGraph &graph);
+    ~Plane();
+
+    void Update(Plane &enemy, float deltaTime, const MPCController &mpc);
+    void Draw(Camera3D camera) const;
+    void SetDestinationViaAStar(int targetNodeIdx);
+
+    // Getters & Setters
+    [[nodiscard]] Vector3 GetPosition() const { return m_position; }
+    void SetPosition(const Vector3 &position) { m_position = position; }
+
+    [[nodiscard]] Vector3 GetVelocity() const { return m_velocity; }
+    void SetVelocity(const Vector3 &velocity) { m_velocity = velocity; }
+
+    [[nodiscard]] Vector3 GetAcceleration() const { return m_acceleration; }
+    void SetAcceleration(const Vector3 &acceleration) { m_acceleration = acceleration; }
+
+    [[nodiscard]] AIState GetCurrentState() const { return CurrentState; }
+    void SetCurrentState(AIState state) { CurrentState = state; }
+
+    [[nodiscard]] AIEvent GetCurrentEvent() const { return CurrentEvent; }
+    void SetCurrentEvent(AIEvent event) { CurrentEvent = event; }
+
+    [[nodiscard]] bool GetLocked() const {
+        return m_locked;
+    }
+
+    void SetIsLocked(bool m_locked) {
+        this->m_locked = m_locked;
+    }
+
+    void UpdateLockTimer(float dt, bool isBeingTargeted) {
+        if (isBeingTargeted)
+        {
+            m_lockTimer += dt;
+            m_locked = true;
+        }
+        else m_lockTimer = 0.0f; // איבוד נעילה מאפס את הטיימר
+
+
+    }
+
 private:
+    static constexpr float UPDATE_PATH_DELAY = 0.02;
+
     Model m_model{};
+    Matrix m_baseTransform{}; // שומר את היישור הראשוני של המודל
 
     Vector3 m_position;
     Vector3 m_velocity;
     Vector3 m_acceleration;
-    float m_rotation;
 
-    // float FuelLevel;
-    // int AmmoCount;
+    float m_rotation = 0.0f;
+    float m_tilt = 0.0f;
+    float m_speed = 100.0f;
+    float m_delay = 0.0f;
+
     AIState CurrentState;
     AIEvent CurrentEvent;
 
-    float m_speed = 100.0f;
-    std::vector<Vector3> m_path;
-
-    size_t           m_currentPatrolIndex = 0;
-
+    std::deque<Vector3> m_path;
     std::unique_ptr<DStarLite> m_dstar;
-
     NavigationGraph &m_graph;
-    float m_pathUpdateTimer = 0.0f;
+    Vector3 m_lastPathTarget = {0, 0, 0};
 
-    Vector3 m_currentSteeringTarget;
-    bool m_hasTarget = false;
-
-    Vector3 m_lastEnemyPos = { 0 };
-    Vector3 m_smoothedEnemyVel = { 0 };
-
-    float m_tilt = 0.0f;
-
-    float m_delay = 0.0f;
-
-
-    void UpdatePatrol( float deltaTime, const MPCController &mpc);
-    void UpdatePursuit(Plane &enemy, float deltaTime, const MPCController &mpc);
-
-    Vector3 PredictEnemyPos(const Plane &enemy, float deltaTime);
-
-    void UpdateEvade(const Vector3 &enemyPos, const Vector3 &enemyVel, float deltaTime, const MPCController &mpc);
-
-    const Vector3& PredictEnemyPos(const Vector3 &enemyPos, float deltaTime) const;
-
+    bool m_locked = false;
+    float m_lockTimer = 0.0f;
 
 public:
-
-
-    [[nodiscard]] AIEvent GetCurrentEvent() const {
-        return CurrentEvent;
+    [[nodiscard]] float GetLockTimer() const {
+        return m_lockTimer;
     }
 
-    void SetCurrentEvent(AIEvent current_event) {
-        CurrentEvent = current_event;
-    }
+private:
+    void UpdatePatrol(float deltaTime, const MPCController &mpc);
 
+    void ApplyWorldBounds(float deltaTime);
 
-
-    Plane(const Vector3 &position, const Vector3 &velocity, const Vector3 &acceleration, const Color& color, NavigationGraph &graph);
-
-    void SetDestinationViaAStar(int targetNodeIdx);
-
-    ~Plane();
-
-    void Update(Plane &enemy, float deltaTime, const MPCController &mpc);
-
-    void ExecuteMovement(float deltaTime, const MPCController &mpc);
-
-    void UpdateEvadeTarget(const Vector3 &enemyPos, const Vector3 &enemyVel);
+    void UpdatePursuit(Plane &enemy, float deltaTime, const MPCController &mpc, bool shouldUpdatePath);
+    void UpdateEvade(const Vector3 &enemyPos, const Vector3 &enemyVel, float deltaTime, const MPCController &mpc, bool shouldUpdatePath);
 
     void UpdateRotationAndTilt(float deltaTime);
-
-    void Draw() const;
-
-
-    [[nodiscard]] Vector3 position() const {
-        return m_position;
-    }
-
-    void set_m_position(const Vector3 &m_position) {
-        this->m_position = m_position;
-    }
-
-    [[nodiscard]] Vector3 velocity() const {
-        return m_velocity;
-    }
-
-    void set_m_velocity(const Vector3 &m_velocity) {
-        this->m_velocity = m_velocity;
-    }
-
-    [[nodiscard]] Vector3 acceleration() const {
-        return m_acceleration;
-    }
-
-    void SetCurrentState(AIState current_state) {
-        CurrentState = current_state;
-    }
-
-    void set_m_acceleration(const Vector3 &m_acceleration) {
-        this->m_acceleration = m_acceleration;
-    }
-
-    [[nodiscard]] AIState GetCurrentState() const {
-        return CurrentState;
-    }
-
 };
 
-
-#endif //DOGFIGHT_PLANE_H
+#endif // DOGFIGHT_PLANE_H

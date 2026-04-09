@@ -14,6 +14,7 @@
 #include "DStarLite.h"
 #include "FSM.h"
 #include "MPCController.h"
+#include <random>
 
 class Engine {
 public:
@@ -30,8 +31,9 @@ private:
     void Update(float deltaTime);
     void Render();
 
+
     Camera3D m_camera{};
-    bool m_shouldClose;
+    bool m_shouldClose = false;
     NavigationGraph m_navGraph;
     std::shared_ptr<Plane> m_plane;
     std::shared_ptr<Plane> m_enemy;

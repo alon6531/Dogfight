@@ -51,3 +51,5 @@ if (OpenMP_CXX_FOUND)
 endif()
 
 target_include_directories(Dogfight PUBLIC ${raylib_SOURCE_DIR}/src)
+
+add_definitions(-DNOGDI -DNOUSER -DWIN32_LEAN_AND_MEAN)

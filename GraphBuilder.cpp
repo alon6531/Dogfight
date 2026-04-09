@@ -4,6 +4,8 @@
 #include "GraphBuilder.h"
 
 #include <algorithm>
+#include <cfloat>
+#include <iostream>
 #include <map>
 
 #include "rlgl.h"
@@ -219,16 +221,26 @@ std::vector<Vector3> NavigationGraph::FindPathViaAStar(int startIdx, int targetI
 
 // Finds the index of the node closest to a given 3D position
 int NavigationGraph::GetClosestNode(Vector3 position) {
-    int closestIdx = -1;
-    float minDist = INFINITY;
+    if (m_nodes.empty()) {
+        std::cerr << "CRITICAL ERROR: NavigationGraph is EMPTY!" << std::endl;
+        return -1;
+    }
+
+    // הגנה מפני מיקום לא תקין של המטוס
+    if (isnan(position.x) || isnan(position.y) || isnan(position.z)) {
+        return 0; // פשוט תחזיר את הצומת הראשון במקום לקרוס
+    }
+
+    int closestIdx = 0; // נתחיל מ-0 במקום -1 כברירת מחדל
+    float minDist = FLT_MAX;
 
     for (int i = 0; i < (int)m_nodes.size(); i++) {
         Vector3 np = m_nodes[i].position;
-        float xzDistSq = pow(np.x - position.x, 2) + pow(np.z - position.z, 2);
-        float yDistSq = pow(np.y - position.y, 2);
+        float dx = np.x - position.x;
+        float dy = np.y - position.y;
+        float dz = np.z - position.z;
 
-        // קנס על הפרש גובה - גורם למטוס להיצמד למישור שלו בחיפוש הצומת
-        float totalDistSq = xzDistSq + (yDistSq * 15.0f);
+        float totalDistSq = (dx*dx + dz*dz) + (dy*dy * 15.0f);
 
         if (totalDistSq < minDist) {
             minDist = totalDistSq;

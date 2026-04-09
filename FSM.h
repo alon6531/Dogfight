@@ -8,6 +8,8 @@
 
 #include "raylib.h"
 
+
+
 class NavigationGraph;
 
 enum class AIState { IDLE, PATROL, PURSUIT, EVADE, COLLISION_AVOID };
@@ -26,9 +28,14 @@ class Plane;
 class FSM {
 public:
     explicit FSM(NavigationGraph& graph);
-    void Update(Plane &actor, Plane &opponent, const Vector3 &targetPos, float deltaTime);
+    bool Update(Plane &actor, Plane &opponent, const Vector3 &targetPos, float deltaTime);
 
-    static bool IsEnemyBehind(const Plane &owner, const Vector3 &enemyPos);
+    bool IsTargetLocked(const Plane &attacker, const Plane &target, float maxDist, float lockAngleDeg);
+
+    static  float CalculateTacticalStrength(const Plane &owner, const Plane &target);
+
+
+
 
     static std::string GetCurrentStateName(AIState state);
 
@@ -37,7 +44,10 @@ private:
 
     std::unordered_map<std::pair<AIState, AIEvent>, AIState, PairHash> transitionTable;
 
+
     void InitializeTable();
+
+
 };
 
 #endif

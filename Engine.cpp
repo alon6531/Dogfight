@@ -42,60 +42,58 @@ Engine::~Engine() {
  */
 void Engine::ProcessInput() {
 
-
     if (WindowShouldClose()) m_shouldClose = true;
 
 }
 
 void Engine::InitializeSystem() {
-    Obstacle sphereObs;
-    sphereObs.pos = {-240, 0, -150};
-    sphereObs.radius = 5.0f;
-    m_obstacles.push_back(sphereObs);
-
-    Obstacle sphereObs1;
-    sphereObs1.pos = {170, -100, 170};
-    sphereObs1.radius = 70.0f;
-    m_obstacles.push_back(sphereObs1);
-
-
+    // ... (הגדרת המכשולים נשארת אותו דבר) ...
 
     m_shouldClose = false;
-
     Vector3 fullMapSize = { 1500, 750, 1500 };
-    m_map.Load("HeightMap.png", fullMapSize  , "MapTexture.png");
+    m_map.Load("HeightMap.png", fullMapSize, "MapTexture.png");
 
-
-
-
-    m_navGraph.BuildGraphFromMap(fullMapSize, 30, m_obstacles, m_map);
+    m_navGraph.BuildGraphFromMap(fullMapSize, 50, m_obstacles, m_map);
     m_navGraph.PrepareGPUData();
     m_navGraph.BuildDistanceMatrix();
 
+    // --- לוגיקת רנדומיזציה ---
+    std::random_device rd;
+    std::mt19937 gen(rd());
 
-    int startNodeIdx = m_navGraph.GetClosestNode({600, -270, 200});
+    // נגדיר טווחים בהתאם ל-fullMapSize (ממרכז המפה)
+    // הערה: אני משתמש ב-0.8 כדי שהם לא ייוולדו ממש על הקצה
+    std::uniform_real_distribution<float> distX(-fullMapSize.x * 0.4f, fullMapSize.x * 0.4f);
+    std::uniform_real_distribution<float> distZ(-fullMapSize.z * 0.4f, fullMapSize.z * 0.4f);
+    std::uniform_real_distribution<float> distY(-100.0f, 200.0f); // גובה טיסה סביר
+
+    // יצירת מיקום רנדומלי למטוס שלנו
+    Vector3 randomStartPos = { distX(gen), distY(gen), distZ(gen) };
+    int startNodeIdx = m_navGraph.GetClosestNode(randomStartPos);
     m_starPoint = m_navGraph.nodes()[startNodeIdx].position;
 
-    int targetNodeIdx = m_navGraph.GetClosestNode({100, -24, 50});
+    // יצירת מיקום רנדומלי לאויב (מוודאים שהוא לא בדיוק על המטוס שלנו)
+    Vector3 randomEnemyPos = { distX(gen), distY(gen), distZ(gen) };
+    int enemyNodeIdx = m_navGraph.GetClosestNode(randomEnemyPos);
+    Vector3 enemyStartPos = m_navGraph.nodes()[enemyNodeIdx].position;
+
+    // יצירת מטרה רנדומלית (Target Point)
+    Vector3 randomTargetPos = { distX(gen), distY(gen), distZ(gen) };
+    int targetNodeIdx = m_navGraph.GetClosestNode(randomTargetPos);
     m_targetPoint = m_navGraph.nodes()[targetNodeIdx].position;
 
-    m_camera.position = { m_starPoint.x, m_starPoint.y + 50, m_starPoint.z - 100 };
+    // --- אתחול האובייקטים עם המיקומים החדשים ---
+    m_plane = std::make_unique<Plane>(m_starPoint, Vector3{10, 0, 10}, Vector3{0, 0, 0}, PINK, m_navGraph);
+    m_enemy = std::make_unique<Plane>(enemyStartPos, Vector3{-10, 0, -10}, Vector3{0, 0, 0}, YELLOW, m_navGraph);
+
+    // הגדרת המצלמה שתסתכל על המטוס שלנו במיקומו החדש
+    m_camera.position = { m_starPoint.x, m_starPoint.y + 50, m_starPoint.z - 50 };
     m_camera.target = m_starPoint;
 
-    m_plane = std::make_unique<Plane>(m_starPoint, Vector3(5, 5, 5), Vector3(0, 0, 0), PINK, m_navGraph);
-    m_enemy = std::make_unique<Plane>(Vector3(-100, -120, -150), Vector3(), Vector3(), YELLOW, m_navGraph);
     m_fsm = std::make_unique<FSM>(m_navGraph);
     m_mpcController = std::make_unique<MPCController>((MPCParameters){
-     15,
-     0.05f,
-     15.0f,
-     1.5f,
-     0.8f
- });
-
-
-
-
+        15, 0.05f, 100.0f, 2.5f, 0.8f
+    });
 }
 
 /**
@@ -104,16 +102,30 @@ void Engine::InitializeSystem() {
  */
 void Engine::Update(float deltaTime) {
     deltaTime = fminf(deltaTime, 0.05f);
+    if (deltaTime > 0.05f) deltaTime = 0.05f;
 
     UpdateCamera(&m_camera, CAMERA_FREE);
     UpdateCamera(&m_camera, CAMERA_FREE);
     UpdateCamera(&m_camera, CAMERA_FREE);
+    UpdateCamera(&m_camera, CAMERA_FREE);
+    UpdateCamera(&m_camera, CAMERA_FREE);
+    UpdateCamera(&m_camera, CAMERA_FREE);
 
-    // Vector3 planePos = m_plane->position();
+    // Vector3 planePos = m_plane->GetPosition();
+    // Vector3 planeVel = m_plane->GetVelocity();
+    // Vector3 forward = (Vector3LengthSqr(planeVel) > 0.1f) ? Vector3Normalize(planeVel) : Vector3{ 0, 0, 1 };
+    // float distanceBehind = 60.0f;
+    // float heightAbove = 25.0f;
+    // Vector3 offset = Vector3Scale(forward, -distanceBehind);
+    // offset.y += heightAbove;
+    // Vector3 targetCameraPos = Vector3Add(planePos, offset);
+    // m_camera.position = Vector3Lerp(m_camera.position, targetCameraPos, 10.0f * deltaTime);
     // m_camera.target = planePos;
-    // m_camera.position = Vector3Add(planePos, {0, 30, -60});
+    //
 
-    m_fsm->Update(*m_plane, *m_enemy, m_targetPoint, deltaTime);
+
+
+    m_shouldClose = m_fsm->Update(*m_plane, *m_enemy, m_targetPoint, deltaTime);
 
 
     m_map.UpdateFog(m_camera.position);
@@ -159,10 +171,10 @@ void Engine::Render() {
     DrawGrid(20, 1.0f);
 
 
-    //m_navGraph.Draw(m_camera.position, 100);
+    m_navGraph.Draw(m_camera.position, 100);
 
-    m_plane->Draw();
-    m_enemy->Draw();
+    m_plane->Draw(m_camera);
+    m_enemy->Draw(m_camera);
 
     m_map.Draw();
 
@@ -174,11 +186,15 @@ void Engine::Render() {
     DrawText("Y Axis: GREEN", 10, 95, 20, DARKGREEN);
     DrawText("Z Axis: BLUE", 10, 120, 20, BLUE);
 
+    DrawText(TextFormat("Enemy Pos: %.2f, %.2f, %.2f",
+             m_enemy->GetPosition().x, m_enemy->GetPosition().y, m_enemy->GetPosition().z),
+             10, 150, 20, YELLOW);
 
     DrawFPS(10, 10);
     DrawText("ENGINE MODE: ACTIVE", 10, 40, 20, DARKGREEN);
     EndDrawing();
 }
+
 
 void Engine::Run() {
 

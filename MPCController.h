@@ -18,8 +18,11 @@ public:
 
     // מחשב את וקטור ההיגוי האופטימלי
     Vector3 CalculateSteering(Vector3 pos, Vector3 vel, const std::vector<Vector3>& path) const;
+    static Vector3 Vector3RotateTowards(Vector3 current, Vector3 target, float maxAngle);
+
 
 private:
+
     MPCParameters m_params;
 };
 
