@@ -68,7 +68,7 @@ void Engine::InitializeSystem() {
 
 
 
-    m_navGraph.BuildGraphFromMap(fullMapSize, 50, m_obstacles, m_map);
+    m_navGraph.BuildGraphFromMap(fullMapSize, 30, m_obstacles, m_map);
     m_navGraph.PrepareGPUData();
     m_navGraph.BuildDistanceMatrix();
 
@@ -85,7 +85,13 @@ void Engine::InitializeSystem() {
     m_plane = std::make_unique<Plane>(m_starPoint, Vector3(5, 5, 5), Vector3(0, 0, 0), PINK, m_navGraph);
     m_enemy = std::make_unique<Plane>(Vector3(-100, -120, -150), Vector3(), Vector3(), YELLOW, m_navGraph);
     m_fsm = std::make_unique<FSM>(m_navGraph);
-    m_mpcController = std::make_unique<MPCController>((MPCParameters){12, 0.15f, 50.0f, 2.5f, 1.0f});
+    m_mpcController = std::make_unique<MPCController>((MPCParameters){
+     15,
+     0.05f,
+     15.0f,
+     1.5f,
+     0.8f
+ });
 
 
 
@@ -97,6 +103,7 @@ void Engine::InitializeSystem() {
  * @param deltaTime
  */
 void Engine::Update(float deltaTime) {
+    deltaTime = fminf(deltaTime, 0.05f);
 
     UpdateCamera(&m_camera, CAMERA_FREE);
     UpdateCamera(&m_camera, CAMERA_FREE);
@@ -110,8 +117,8 @@ void Engine::Update(float deltaTime) {
 
 
     m_map.UpdateFog(m_camera.position);
-    m_plane->Update(m_enemy->position(), deltaTime, *m_mpcController);
-    m_enemy->Update(m_plane->position(), deltaTime, *m_mpcController);
+    m_plane->Update(*m_enemy, deltaTime, *m_mpcController);
+    m_enemy->Update(*m_plane, deltaTime, *m_mpcController);
 
     //std::cout << "Camera pos: " <<  m_camera.position.x << " " <<  m_camera.position.y << " " <<  m_camera.position.z << std::endl;
 
@@ -152,7 +159,7 @@ void Engine::Render() {
     DrawGrid(20, 1.0f);
 
 
-    m_navGraph.Draw(m_camera.position, 100);
+    //m_navGraph.Draw(m_camera.position, 100);
 
     m_plane->Draw();
     m_enemy->Draw();

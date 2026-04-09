@@ -16,6 +16,8 @@ class DStarLite;
 class NavigationGraph;
 class MPCController;
 
+#define DELAY_TIME 0.2f
+
 class Plane {
 private:
     Model m_model{};
@@ -33,6 +35,8 @@ private:
     float m_speed = 100.0f;
     std::vector<Vector3> m_path;
 
+    size_t           m_currentPatrolIndex = 0;
+
     std::unique_ptr<DStarLite> m_dstar;
 
     NavigationGraph &m_graph;
@@ -44,10 +48,17 @@ private:
     Vector3 m_lastEnemyPos = { 0 };
     Vector3 m_smoothedEnemyVel = { 0 };
 
-    void UpdatePatrol( float deltaTime, const MPCController &mpc);
-    void UpdatePursuit(const Vector3 &enemyPos, float deltaTime, const MPCController &mpc);
+    float m_tilt = 0.0f;
 
-    Vector3 PredictEnemyPos(const Vector3 &enemyPos, float deltaTime);
+    float m_delay = 0.0f;
+
+
+    void UpdatePatrol( float deltaTime, const MPCController &mpc);
+    void UpdatePursuit(Plane &enemy, float deltaTime, const MPCController &mpc);
+
+    Vector3 PredictEnemyPos(const Plane &enemy, float deltaTime);
+
+    void UpdateEvade(const Vector3 &enemyPos, const Vector3 &enemyVel, float deltaTime, const MPCController &mpc);
 
     const Vector3& PredictEnemyPos(const Vector3 &enemyPos, float deltaTime) const;
 
@@ -69,9 +80,15 @@ public:
 
     void SetDestinationViaAStar(int targetNodeIdx);
 
-    ~Plane() = default;
+    ~Plane();
 
-    void Update(const Vector3 &enemyPos, float deltaTime, const MPCController &mpc);
+    void Update(Plane &enemy, float deltaTime, const MPCController &mpc);
+
+    void ExecuteMovement(float deltaTime, const MPCController &mpc);
+
+    void UpdateEvadeTarget(const Vector3 &enemyPos, const Vector3 &enemyVel);
+
+    void UpdateRotationAndTilt(float deltaTime);
 
     void Draw() const;
 

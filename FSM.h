@@ -28,6 +28,8 @@ public:
     explicit FSM(NavigationGraph& graph);
     void Update(Plane &actor, Plane &opponent, const Vector3 &targetPos, float deltaTime);
 
+    static bool IsEnemyBehind(const Plane &owner, const Vector3 &enemyPos);
+
     static std::string GetCurrentStateName(AIState state);
 
 private:

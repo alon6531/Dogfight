@@ -82,86 +82,79 @@ void DStarLite::ComputeShortestPath() {
 }
 
 std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
-
     int newStart = m_graph.GetClosestNode(startPos);
     int newTarget = m_graph.GetClosestNode(targetPos);
 
+    // הגנה קריטית: אם לא נמצאו צמתים, אל תמשיך
     if (newStart == -1 || newTarget == -1) return {};
 
-    // 2. אתחול ראשוני (פעם אחת בלבד)
-    if (m_startNodeIdx != -1) {
-        float distToCurrent = Vector3Distance(startPos, m_graph.nodes()[m_startNodeIdx].position);
-        float distToNext = Vector3Distance(startPos, m_graph.nodes()[newStart].position);
-
-        // החלף צומת רק אם החדש קרוב יותר משמעותית (לפחות ב-5 יחידות) מהנוכחי
-        if (distToNext < distToCurrent - 5.0f) {
-            m_kM += Vector3Distance(m_graph.nodes()[m_startNodeIdx].position, m_graph.nodes()[newStart].position);
-            m_startNodeIdx = newStart;
-        }
-    } else {
+    // --- אתחול ראשוני מאוד (אם זו הפעם הראשונה אי פעם) ---
+    if (m_targetNodeIdx == -1) {
+        m_nodes.clear();
+        while(!m_openSet.empty()) m_openSet.pop();
+        m_kM = 0;
+        m_targetNodeIdx = newTarget;
         m_startNodeIdx = newStart;
+
+        m_nodes[m_targetNodeIdx].rhs = 0;
+        m_nodes[m_targetNodeIdx].g = 1e9f;
+        UpdateVertex(m_targetNodeIdx);
+        ComputeShortestPath();
+        return {};
     }
 
-    // 3. עדכון תנועת המטוס (מניעת רעידות)
-    // אנחנו מעדכנים את נקודת ההתחלה רק אם המטוס באמת עבר צומת
+    // --- עדכון תנועת המטוס (Start) ---
     if (newStart != m_startNodeIdx) {
-        float distToNewStart = Vector3Distance(
-            startPos,
-            m_graph.nodes()[newStart].position
-        );
-        float distToCurrentStart = Vector3Distance(
-            startPos,
-            m_graph.nodes()[m_startNodeIdx].position
-        );
-
-        // Only switch if we're meaningfully closer to the new node
-        if (distToNewStart < distToCurrentStart - 2.0f) {
-            m_kM += Vector3Distance(
-                m_graph.nodes()[m_startNodeIdx].position,
-                m_graph.nodes()[newStart].position
-            );
+        // הוספת בדיקה שהמרחק הגיוני ולא NaN
+        float dist = Vector3Distance(m_graph.nodes()[m_startNodeIdx].position, m_graph.nodes()[newStart].position);
+        if (!std::isnan(dist)) {
+            m_kM += dist;
             m_startNodeIdx = newStart;
         }
     }
 
-    // 4. עדכון תנועת האויב (היעד)
+    // --- עדכון תנועת האויב (Target) ---
     if (newTarget != m_targetNodeIdx) {
-        // FIXED: reset the OLD target before switching
-        int oldTarget = m_targetNodeIdx;
-        m_nodes[oldTarget].rhs = 1e9f;
-        m_nodes[oldTarget].g   = 1e9f;
-        m_nodes[oldTarget].gen++;
-        UpdateVertex(oldTarget);
+        // הגנה: רק אם היעד הישן חוקי, נאפס אותו
+        if (m_targetNodeIdx != -1) {
+            int oldTarget = m_targetNodeIdx;
+            m_nodes[oldTarget].rhs = 1e9f;
+            m_nodes[oldTarget].g = 1e9f;
+            m_nodes[oldTarget].gen++;
+            UpdateVertex(oldTarget);
 
-        m_kM += Vector3Distance(
-            m_graph.nodes()[m_targetNodeIdx].position,
-            m_graph.nodes()[newTarget].position
-        );
+            float targetDist = Vector3Distance(m_graph.nodes()[oldTarget].position, m_graph.nodes()[newTarget].position);
+            m_kM += targetDist;
+        }
 
         m_targetNodeIdx = newTarget;
         m_nodes[m_targetNodeIdx].rhs = 0.0f;
-        m_nodes[m_targetNodeIdx].g   = 1e9f;
+        m_nodes[m_targetNodeIdx].g = 1e9f;
         UpdateVertex(m_targetNodeIdx);
     }
 
-    // 5. חישוב מסלול (הגדלנו איטרציות)
     ComputeShortestPath();
 
-    // 6. שחזור מסלול חכם (מניעת לולאה על המקום)
+    // --- שחזור מסלול (Path Reconstruction) ---
     std::vector<Vector3> path;
     std::unordered_set<int> visited;
     int curr = m_startNodeIdx;
 
+    // הגנה: אם אין נתיב חוקי לצומת ההתחלה, אל תנסה לשחזר
+    if (m_nodes.count(curr) == 0 || m_nodes[curr].g >= 1e8f) return {};
+
     for (int step = 0; step < 40; step++) {
+        if (curr < 0 || curr >= (int)m_graph.nodes().size()) break;
+
         path.push_back(m_graph.nodes()[curr].position);
         if (curr == m_targetNodeIdx) break;
         visited.insert(curr);
 
         int nextNode = -1;
-        float minCost = 1e10f;
+        float minCost = 1e9f;
 
         for (auto& edge : m_graph.nodes()[curr].neighbors) {
-            if (visited.count(edge.target)) continue; // ← skip already visited
+            if (visited.count(edge.target)) continue;
             float gVal = m_nodes.count(edge.target) ? m_nodes[edge.target].g : 1e9f;
             float edgeCost = edge.weight + gVal;
             if (edgeCost < minCost) {
@@ -170,7 +163,7 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
             }
         }
 
-        if (nextNode == -1) break;
+        if (nextNode == -1 || nextNode == curr) break;
         curr = nextNode;
     }
 

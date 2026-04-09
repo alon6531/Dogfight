@@ -16,115 +16,124 @@
 Plane::Plane(const Vector3 &position, const Vector3 &velocity, const Vector3 &acceleration, const Color& color, NavigationGraph &graph)
     : m_graph(graph),
       m_position(position),
-      m_velocity(velocity),
+        m_velocity({0, 0, 0}),
       m_acceleration(acceleration) {
     const Mesh mesh = GenMeshCube(5.0f, 2.5f, 10.0f);
-    m_model = LoadModelFromMesh(mesh);
-    m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].color = color;
+    m_model = LoadModel("plane.glb");
+    for (int i = 0; i < m_model.materialCount; i++) {
+        m_model.materials[i].maps[MATERIAL_MAP_ALBEDO].color = color;
+    }
     m_acceleration = Vector3();
     CurrentState = AIState::IDLE;
     CurrentEvent = AIEvent::NONE;
 
     m_dstar = std::make_unique<DStarLite>(m_graph);
 
+    Matrix rotX = MatrixRotateX(90.0f * DEG2RAD);
+
+    // 2. צור מטריצת סיבוב לציר Y (כדי לסובב אותו מהצד לחזית)
+    // אם הוא מסתכל שמאלה, נסה 90 או -90 כדי ליישר אותו קדימה
+    Matrix rotY = MatrixRotateY(-90.0f * DEG2RAD);
+
+    // 3. הכפל אותן יחד (הסדר חשוב!) ושמור ב-transform
+    m_model.transform = MatrixMultiply(rotX, rotY);
+
 }
 
 void Plane::SetDestinationViaAStar(int targetNodeIdx) {
     int startNodeIdx = m_graph.GetClosestNode(m_position);
+    m_velocity = {0, 0, 0};
 
     if (startNodeIdx != -1) {
         m_path = m_graph.FindPathViaAStar(startNodeIdx, targetNodeIdx);
 
+        std::cout << "=== PATH ===" << std::endl;
+        for (int i = 0; i < (int)m_path.size(); i++) {
+            std::cout << "  [" << i << "] " << m_path[i].x << ", " << m_path[i].y << ", " << m_path[i].z << std::endl;
+        }
 
         m_rotation = atan2f(m_velocity.x, m_velocity.z) * RAD2DEG;
     }
 }
 
-void Plane::Update(const Vector3& enemyPos,float deltaTime, const MPCController &mpc) {
+Plane::~Plane() {
+    UnloadModel(m_model);
+}
+
+void Plane::Update(Plane& enemy,float deltaTime, const MPCController &mpc) {
+
+    m_delay += deltaTime;
 
     if (GetCurrentState() == AIState::PATROL) {
         UpdatePatrol(deltaTime, mpc);
 
     }
+
     if (GetCurrentState() == AIState::PURSUIT) {
-        UpdatePursuit(enemyPos, deltaTime, mpc);
+        UpdatePursuit(enemy, deltaTime, mpc);
     }
+    if (GetCurrentState() == AIState::EVADE) {
+        UpdateEvade(enemy.position(), enemy.velocity(), deltaTime, mpc);
+    }
+
+
+
+    if (m_delay >  DELAY_TIME)
+        m_delay = 0;
+
 }
 
 void Plane::UpdatePatrol(float deltaTime, const MPCController &mpc) {
-    // 1. Handle Empty Path (Deceleration state)
-    if (m_path.empty()) {
+    deltaTime = fminf(deltaTime, 0.05f);
 
+    if (m_path.empty()) {
 
         return;
     }
-    std::cout << "pos: " << m_position.x << " " << m_position.y << " " << m_position.z << std::endl;
-    // 2. Establish Orientation
-    // If the plane is stationary, assume it's facing its current rotation or world forward
-    Vector3 forward = (Vector3Length(m_velocity) > 0.1f)
-                      ? Vector3Normalize(m_velocity)
-                      : Vector3{ sinf(m_rotation * DEG2RAD), 0, cosf(m_rotation * DEG2RAD) };
 
-    // 3. Path Pruning (Waypoint Management)
-    // We check if the current target waypoint is reached or behind us
-    const float arrivalThreshold = 30.0f;
-
+    // Prune nodes we've passed
     while (m_path.size() > 1) {
-        Vector3 toWaypoint = Vector3Subtract(m_path[0], m_position);
-        float distance = Vector3Length(toWaypoint);
-
-        if (distance < arrivalThreshold) {
+        float dist = Vector3Length(Vector3Subtract(m_path[0], m_position));
+        if (dist < 40.0f) {
             m_path.erase(m_path.begin());
         } else {
             break;
         }
     }
 
-    // 4. Steering and Movement
-    if (!m_path.empty()) {
-        // MPC requires a horizon; if only one point left, duplicate it to maintain path shape
-        if (m_path.size() == 1) {
-            m_path.push_back(m_path[0]);
-        }
-
-        // Calculate steering vector from MPC
-        Vector3 steerDir = mpc.CalculateSteering(m_position, m_velocity, m_path);
-
-        // Fallback for invalid MPC output
-        if (isnan(steerDir.x) || Vector3Length(steerDir) < 0.001f) {
-            steerDir = forward;
-        }
-
-        // Pitch Constraints (Keep the plane from diving/climbing too steeply)
-        const float maxPitch = 0.3f;
-        steerDir.y = Clamp(steerDir.y, -maxPitch, maxPitch);
-        steerDir = Vector3Normalize(steerDir);
-
-        // Apply Velocity and Physics
-        Vector3 targetVelocity = Vector3Scale(steerDir, m_speed);
-        m_velocity = Vector3Lerp(m_velocity, targetVelocity, 3.0f * deltaTime);
-
-        Vector3 moveStep = Vector3Scale(m_velocity, deltaTime);
-
-        // Safety check to prevent "teleporting" due to huge deltaTimes or NaN
-        if (!isnan(moveStep.x) && Vector3Length(moveStep) < 100.0f) {
-            m_position = Vector3Add(m_position, moveStep);
-        }
-
-        // 5. Visual Rotation (Yaw)
-        // Lerp the visual rotation toward the movement direction
-        if (Vector3Length(m_velocity) > 0.5f) {
-            float targetYaw = atan2f(m_velocity.x, m_velocity.z) * RAD2DEG;
-            m_rotation = Lerp(m_rotation, targetYaw, 5.0f * deltaTime);
+    // Final node arrival
+    if (m_path.size() == 1) {
+        float dist = Vector3Length(Vector3Subtract(m_path[0], m_position));
+        if (dist < 40.0f) {
+            m_path.clear();
+            return;
         }
     }
+
+    if (m_path.empty()) return;
+
+    Vector3 toTarget = Vector3Subtract(m_path[0], m_position);
+    Vector3 steerDir = Vector3Normalize(toTarget);
+    if (steerDir.y > 0.4f)  steerDir.y =  0.4f;
+    if (steerDir.y < -0.4f) steerDir.y = -0.4f;
+    steerDir = Vector3Normalize(steerDir);
+
+    m_velocity = Vector3Lerp(m_velocity, Vector3Scale(steerDir, m_speed), 4.0f * deltaTime);
+    m_position = Vector3Add(m_position, Vector3Scale(m_velocity, deltaTime));
+
+    UpdateRotationAndTilt(deltaTime);
 }
 
-void Plane::UpdatePursuit(const Vector3 &enemyPos, float deltaTime, const MPCController &mpc) {
+void Plane::UpdatePursuit(Plane &enemy, float deltaTime, const MPCController &mpc) {
 
-
-
-        m_path = m_dstar->PlanPath(m_position, PredictEnemyPos(enemyPos, deltaTime));
+    if (m_path.size() <= 1) {
+        // אם אין נתיב, טוס ישר קדימה לאט וחפש נתיב חדש
+        Vector3 forward = (Vector3LengthSqr(m_velocity) > 0.1f) ? Vector3Normalize(m_velocity) : Vector3{0, 0, 1};
+        m_velocity = Vector3Lerp(m_velocity, Vector3Scale(forward, m_speed * 0.5f), deltaTime);
+        m_position = Vector3Add(m_position, Vector3Scale(m_velocity, deltaTime));
+    }
+        if (m_delay>  DELAY_TIME)
+            m_path = m_dstar->PlanPath(m_position, PredictEnemyPos(enemy, deltaTime));
 
 
         if (m_path.size() > 1) {
@@ -154,49 +163,111 @@ void Plane::UpdatePursuit(const Vector3 &enemyPos, float deltaTime, const MPCCon
 
 
             Vector3 targetVelocity = Vector3Scale(steerDir, m_speed);
-            m_velocity = Vector3Lerp(m_velocity, targetVelocity, 4.0f * deltaTime);
+            m_velocity = Vector3Lerp(m_velocity, targetVelocity, 6.0f * deltaTime);
 
             m_position = Vector3Add(m_position, Vector3Scale(m_velocity, deltaTime));
 
 
-            if (Vector3Length(m_velocity) > 0.5f) {
-                float targetRot = atan2f(m_velocity.x, m_velocity.z) * RAD2DEG;
-                m_rotation = Lerp(m_rotation, targetRot, 5.0f * deltaTime);
-            }
+            UpdateRotationAndTilt(deltaTime);
         }
 }
 
 
-Vector3 Plane::PredictEnemyPos(const Vector3 &enemyPos, float deltaTime) {
+Vector3 Plane::PredictEnemyPos(const Plane& enemy, float deltaTime) {
+    Vector3 targetPos = enemy.position();
+    Vector3 enemyVel = enemy.velocity();
+    float dist = Vector3Distance(m_position, targetPos);
 
-    if (deltaTime <= 0.0001f) return enemyPos;
+    // חישוב זמן הגעה משוער (זמן = מרחק / מהירות)
+    float timeToReach = dist / (m_speed + 1.0f); // הגנה מחילוק ב-0
 
+    // הגבלה של החיזוי (לא לחזות יותר מ-4 שניות קדימה כי זה לא אמין)
+    timeToReach = fminf(timeToReach, 4.0f);
 
-    Vector3 rawEnemyVel = Vector3Scale(Vector3Subtract(enemyPos, m_lastEnemyPos), 1.0f / deltaTime);
-    m_lastEnemyPos = enemyPos;
-
-
-    m_smoothedEnemyVel = Vector3Lerp(m_smoothedEnemyVel, rawEnemyVel, 10.0f * deltaTime);
-
-    float distToEnemy = Vector3Distance(m_position, enemyPos);
-
-    float speed = (m_speed > 0.1f) ? m_speed : 10.0f;
-    float timeToIntercept = distToEnemy / speed;
-
-    float lookAheadTime = fminf(timeToIntercept, 3.0f);
-    Vector3 predictedPos = enemyPos;
-
-    if (Vector3Length(m_smoothedEnemyVel) > 0.1f) {
-        predictedPos = Vector3Add(enemyPos, Vector3Scale(m_smoothedEnemyVel, lookAheadTime));
-    }
-
-
-    if (isnan(predictedPos.x)) return enemyPos;
+    // הנקודה החזויה: מיקום האויב + המהירות שלו כפול הזמן שיקח לי להגיע
+    Vector3 predictedPos = Vector3Add(targetPos, Vector3Scale(enemyVel, timeToReach));
 
     return predictedPos;
 }
 
+void Plane::UpdateEvade(const Vector3& enemyPos, const Vector3& enemyVel, float deltaTime, const MPCController& mpc) {
+    // הגנה: אם המהירות של האויב היא אפס, נשתמש בכיוון אליו הוא מסתכל או וקטור ברירת מחדל
+    Vector3 enemyForward = (Vector3LengthSqr(enemyVel) > 0.001f)
+                           ? Vector3Normalize(enemyVel)
+                           : Vector3{0, 0, 1};
+
+    Vector3 toEnemy = Vector3Subtract(enemyPos, m_position);
+    Vector3 forward = (Vector3LengthSqr(m_velocity) > 0.001f)
+                      ? Vector3Normalize(m_velocity)
+                      : Vector3{0, 0, 1};
+
+    // חישוב וקטור הצידה - עם הגנה למקרה שהאויב טס בדיוק למעלה
+    Vector3 up = {0, 1, 0};
+    if (fabsf(Vector3DotProduct(enemyForward, up)) > 0.9f) up = {1, 0, 0}; // אם הוא טס למעלה, נשתמש בציר X
+
+    Vector3 sideEscape = Vector3Normalize(Vector3CrossProduct(enemyForward, up));
+
+    // בחר צד בריחה
+    if (Vector3DotProduct(sideEscape, toEnemy) > 0) {
+        sideEscape = Vector3Negate(sideEscape);
+    }
+
+    Vector3 escapeTarget = Vector3Add(m_position, Vector3Scale(sideEscape, 150.0f));
+    escapeTarget.y += 30.0f;
+
+    // הגנה על ה-D*: וודא שהיעד לא זהה למיקום הנוכחי
+    if (Vector3DistanceSqr(m_position, escapeTarget) < 1.0f) return;
+
+    if (m_delay >  DELAY_TIME)
+        m_path = m_dstar->PlanPath(m_position, escapeTarget);
+
+    if (m_path.size() > 1) {
+        Vector3 steerDir = mpc.CalculateSteering(m_position, m_velocity, m_path);
+
+        // הגנה על SteerDir
+        if (Vector3LengthSqr(steerDir) < 0.001f) steerDir = forward;
+        else steerDir = Vector3Normalize(steerDir);
+
+        m_speed = 180.0f;
+        Vector3 targetVelocity = Vector3Scale(steerDir, m_speed);
+        m_velocity = Vector3Lerp(m_velocity, targetVelocity, 6.0f * deltaTime);
+        m_position = Vector3Add(m_position, Vector3Scale(m_velocity, deltaTime));
+
+        UpdateRotationAndTilt(deltaTime);
+    }
+}
+void Plane::UpdateRotationAndTilt(float deltaTime) {
+    if (Vector3Length(m_velocity) > 0.5f) {
+        float targetRot = atan2f(m_velocity.x, m_velocity.z) * RAD2DEG;
+        float deltaAngle = targetRot - m_rotation;
+
+        while (deltaAngle > 180) deltaAngle -= 360;
+        while (deltaAngle < -180) deltaAngle += 360;
+
+        float targetTilt = Clamp(deltaAngle * 4.0f, -60.0f, 60.0f); // בחמיקה הנטייה קיצונית יותר
+        m_tilt = Lerp(m_tilt, targetTilt, 6.0f * deltaTime);
+        m_rotation += deltaAngle * 5.0f * deltaTime;
+    }
+}
+
 
 void Plane::Draw() const {
-    DrawModelEx(m_model, m_position, { 0, 1, 0 }, m_rotation, { 1.0f, 1.0f, 1.0f }, WHITE);
+    // 1. חישוב מטריצת הסיבוב המאוחדת (בלי המיקום!)
+    // קודם הנטייה (Roll) ואז הכיוון (Yaw)
+    Matrix tiltMat = MatrixRotateZ(-m_tilt * DEG2RAD);
+    Matrix rotationMat = MatrixRotateY(m_rotation * DEG2RAD);
+
+    // שילוב עם מטריצת הבסיס מה-Constructor (היישור המקורי)
+    // הערה: m_baseTransform צריכה להישמר ב-Constructor ולא להידרס
+    Matrix modelRotation = MatrixMultiply(tiltMat, rotationMat);
+
+    // 2. ציור באמצעות DrawModel
+    // במקום לשנות את המודל, אנחנו נשתמש ב-Quaternion כדי לעקוף את מגבלת הציר היחיד
+    Quaternion q = QuaternionFromMatrix(modelRotation);
+    Vector3 axis;
+    float angle;
+    QuaternionToAxisAngle(q, &axis, &angle);
+
+    // ציור המודל במיקום האמיתי שלו
+    DrawModelEx(m_model, m_position, axis, angle * RAD2DEG, { 0.1f, 0.1f, 0.1f }, WHITE);
 }
