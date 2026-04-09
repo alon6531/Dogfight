@@ -183,19 +183,48 @@ void Plane::UpdateEvade(const Vector3& enemyPos, const Vector3& enemyVel, float 
 }
 
 float Plane::CalculateEnergyVelocity(const Vector3& targetDir, float deltaTime) {
-    float baseSpeed = (CurrentState == AIState::EVADE) ? EVADE_SPEED : NORMAL_SPEED;
+    // 1. מהירות היעד המקסימלית של המנוע
+    float enginePower = (CurrentState == AIState::EVADE) ? EVADE_SPEED : NORMAL_SPEED;
 
+    // 2. חישוב זווית הפנייה והגרר (Drag)
     Vector3 currentDir = (Vector3LengthSqr(m_velocity) > 0.01f) ? Vector3Normalize(m_velocity) : Vector3{0, 0, 1};
-    float dot = Vector3DotProduct(currentDir, targetDir);
+    float cosAngle = Clamp(Vector3DotProduct(currentDir, targetDir), -1.0f, 1.0f);
+    float angleDegrees = acosf(cosAngle) * RAD2DEG;
 
-    // האטה מתונה יותר בפניות כדי לשמור על תנע (Momentum)
-    float turnFactor = Remap(dot, 1.0f, -1.0f, 1.0f, 0.85f);
-    float pitchFactor = 1.0f - (targetDir.y * 0.25f);
+    // פקטור פנייה: מעל 30 מעלות מתחיל "קנס" כבד
+    float turnSeverity = Clamp(angleDegrees / 90.0f, 0.0f, 1.5f);
+    float turnDrag = powf(turnSeverity, 3.5f) * 0.70f;
+    float turnFactor = fmaxf(1.0f - turnDrag, 0.3f);
 
-    float targetSpeed = baseSpeed * turnFactor * pitchFactor;
+    // 3. השפעת כוח משיכה (Gravity) - כאן השינוי המשמעותי
+    float verticalInfluence = targetDir.y; // 1.0 = למעלה, -1.0 = למטה
+    float gravityFactor = 1.0f;
 
-    // מקדם 0.5f הופך את התאוצה והתאטה לאיטיות וריאליסטיות
-    return Lerp(m_speed, targetSpeed, 0.5f * deltaTime);
+    if (verticalInfluence > 0.0f) {
+        // בטיפוס: אנחנו "גוזרים" עד 60% מהמהירות.
+        // המטוס נלחם במשיכה למטה, אז גם אם המנוע בפול גז, המהירות תרד.
+        gravityFactor = 1.0f - (verticalInfluence * 0.60f);
+    } else {
+        // בצלילה: כוח המשיכה עוזר למנוע, אז המטוס מאיץ מעבר למהירות הרגילה.
+        gravityFactor = 1.0f + (fabsf(verticalInfluence) * 0.50f);
+    }
+
+    // 4. חישוב מהירות היעד הרגעית
+    float targetSpeed = enginePower * turnFactor * gravityFactor;
+
+    // 5. אינרציה דינמית (שימור תנע)
+    // אם המהירות אמורה לרדת (בגלל טיפוס או פנייה), היא תרד מהר (1.8f)
+    // אם המטוס מנסה להאיץ (המנוע דוחף), זה יקרה לאט מאוד (0.15f)
+    float lerpStrength = (targetSpeed < m_speed) ? 1.8f : 0.15f;
+
+    // כאן הקסם: הלרפ האיטי בהאצה גורם לזה שגם אם המנוע חזק,
+    // הטיפוס "אוכל" את המהירות מהר יותר ממה שהמנוע מצליח לייצר אותה.
+    m_speed = Lerp(m_speed, targetSpeed, lerpStrength * deltaTime);
+
+    // 6. הגנות (מהירות מינימלית כדי לא ליפול מהשמיים)
+    m_speed = Clamp(m_speed, 55.0f, 550.0f);
+
+    return m_speed;
 }
 
 void Plane::UpdateRotationAndTilt(float deltaTime) {
