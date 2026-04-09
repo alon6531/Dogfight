@@ -1,0 +1,24 @@
+#version 330
+
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+in vec3 vertexNormal;
+in vec4 vertexColor;
+
+uniform mat4 mvp;
+uniform mat4 matModel;
+
+out vec2 fragTexCoord;
+out vec4 fragColor;
+out float fragDepth; // שולח את העומק ל-Fragment Shader
+
+void main() {
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+
+    // חישוב המיקום בעולם כדי לדעת מה המרחק מהמצלמה
+    vec4 worldPos = matModel * vec4(vertexPosition, 1.0);
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+
+    fragDepth = gl_Position.z; // המרחק מהמצלמה
+}

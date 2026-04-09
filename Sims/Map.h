@@ -27,7 +27,7 @@ public:
 
     [[nodiscard]] Vector3 GetPosition() const { return m_position; }
 
-
+    [[nodiscard]] float GetHeightAt(float x, float z) const;
 
 
 private:
@@ -40,7 +40,7 @@ private:
 
     Shader m_shader;
     int m_fogDensityLoc;
-    float m_fogDensity = 0.015f;
+    float m_fogDensity = 0.002f;
 };
 
 #endif //DOGFIGHT_MAP_H

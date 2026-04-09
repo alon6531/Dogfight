@@ -28,17 +28,25 @@ add_executable(Dogfight
         main.cpp
         Engine.cpp Engine.h
         Global.h
-        GraphBuilder.h GraphBuilder.cpp
-        Plane.cpp Plane.h
+        Sims/GraphBuilder.h Sims/GraphBuilder.cpp
+        Sims/Plane.cpp Sims/Plane.h
         Global.cpp
-        Map.cpp
-        Map.h
-        FSM.cpp
-        FSM.h
-        DStarLite.cpp
-        DStarLite.h
-        MPCController.cpp
-        MPCController.h
+        Sims/Map.cpp
+        Sims/Map.h
+        Sims/FSM.cpp
+        Sims/FSM.h
+        Sims/DStarLite.cpp
+        Sims/DStarLite.h
+        Sims/MPCController.cpp
+        Sims/MPCController.h
+        State/SimsState.cpp
+        State/SimsState.h
+        State/State.cpp
+        State/State.h
+        State/MenuState.cpp
+        State/MenuState.h
+        State/GameOverState.cpp
+        State/GameOverState.h
 )
 
 

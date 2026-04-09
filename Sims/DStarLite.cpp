@@ -8,12 +8,11 @@
 DStarLite::DStarLite(NavigationGraph& graph) : m_graph(graph), m_startNodeIdx(-1), m_targetNodeIdx(-1), m_kM(0) {}
 
 std::pair<float, float> DStarLite::CalculateKey(int s) {
-    // הגנה: אם הצומת לא קיים בגרף
+
     if (s < 0 || s >= (int)m_graph.nodes().size()) return { 1e9f, 1e9f };
 
     float h = Vector3Distance(m_graph.nodes()[s].position, m_graph.nodes()[m_startNodeIdx].position);
 
-    // שימוש ב-at() או בבדיקה כדי למנוע יצירת איברים מיותרים
     float g = m_nodes.count(s) ? m_nodes[s].g : 1e9f;
     float rhs = m_nodes.count(s) ? m_nodes[s].rhs : 1e9f;
 
@@ -24,7 +23,7 @@ std::pair<float, float> DStarLite::CalculateKey(int s) {
 void DStarLite::UpdateVertex(int u) {
     if (u < 0 || u >= (int)m_graph.nodes().size()) return;
 
-    // אתחול צומת אם הוא חדש במפה
+
     if (m_nodes.count(u) == 0) {
         m_nodes[u] = { 1e9f, 1e9f };
     }
@@ -39,7 +38,7 @@ void DStarLite::UpdateVertex(int u) {
         m_nodes[u].rhs = minRhs;
     }
 
-    // ניהול ה-Priority Queue (מניעת כפילויות)
+
     if (m_nodes[u].g != m_nodes[u].rhs) {
         m_nodes[u].gen++;
         m_openSet.push({ CalculateKey(u), u, m_nodes[u].gen });
@@ -57,7 +56,7 @@ void DStarLite::ComputeShortestPath() {
         auto entry = m_openSet.top(); m_openSet.pop();
         int u = entry.node;
 
-        // ← lazy deletion: skip stale entries
+
         if (entry.gen != m_nodes[u].gen) continue;
 
         auto k_old = entry.key;
@@ -85,13 +84,12 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
     int newStart = m_graph.GetClosestNode(startPos);
     int newTarget = m_graph.GetClosestNode(targetPos);
 
-    // --- שכבת הגנה 1: אם המטוס מחוץ לטווח הגרף (GetClosestNode החזיר -1) ---
+
     if (newStart == -1 || newTarget == -1) {
-        // המטוס "עיוור" לגרף, ניתן לו קו ישר למטרה כדי שימשיך לנווט לכיוון הנכון
+
         return { startPos, targetPos };
     }
 
-    // --- אתחול ראשוני (פעם ראשונה בלבד) ---
     if (m_targetNodeIdx == -1) {
         m_nodes.clear();
         while(!m_openSet.empty()) m_openSet.pop();
@@ -105,9 +103,9 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
         ComputeShortestPath();
     }
 
-    // --- עדכון תנועה (Start/Target) ---
+
     if (newStart != m_startNodeIdx) {
-        // בדיקת תקינות למרחק (מניעת NaN)
+
         float dist = Vector3Distance(m_graph.nodes()[m_startNodeIdx].position, m_graph.nodes()[newStart].position);
         if (!std::isnan(dist)) {
             m_kM += dist;
@@ -131,23 +129,22 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
         if (!std::isnan(tDist)) m_kM += tDist;
     }
 
-    // חישוב מסלול - הגדלתי מעט את האיטרציות לביצועים טובים יותר במטוסים
+
     ComputeShortestPath();
 
-    // --- שכבת הגנה 2: שחזור מסלול עם מנגנון Fallback ל-A* ---
+
     std::vector<Vector3> path;
     int curr = m_startNodeIdx;
 
-    // אם ה-D* לא מצא נתיב (g הוא אינסוף), נשתמש ב-A* הקלאסי מהגרף
-    // A* הוא סטטי ותמיד ימצא נתיב אם יש כזה בגרף
+
     if (m_nodes.count(curr) == 0 || m_nodes[curr].g >= 1e6f) {
         auto fallbackPath = m_graph.FindPathViaAStar(m_startNodeIdx, m_targetNodeIdx);
         if (!fallbackPath.empty()) return fallbackPath;
     }
 
-    // שחזור מסלול D* Lite סטנדרטי
+
     std::unordered_set<int> visited;
-    for (int step = 0; step < 80; step++) { // 80 נקודות למרחקים ארוכים
+    for (int step = 0; step < 80; step++) {
         if (curr < 0 || curr >= (int)m_graph.nodes().size()) break;
 
         path.push_back(m_graph.nodes()[curr].position);
@@ -173,7 +170,7 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
         curr = nextNode;
     }
 
-    // --- שכבת הגנה 3: אם הכל נכשל, אל תחזיר ריק! ---
+
     if (path.size() < 2) {
         path.clear();
         path.push_back(startPos);

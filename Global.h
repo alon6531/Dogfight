@@ -10,7 +10,8 @@
 #define WIN_HEIGHT 720
 #include <vector>
 
-
+extern bool gCameraMode;
+extern bool gIsVictory;
 extern void ComputeDijkstra(class NavigationGraph& graph, int startNodeIdx, std::vector<float> &outDistances);
 
 

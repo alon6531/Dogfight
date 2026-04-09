@@ -46,6 +46,7 @@ private:
 
 
     void InitializeTable();
+    bool UpdateLock(Plane &actor, Plane &opponent, float deltaTime);
 
 
 };

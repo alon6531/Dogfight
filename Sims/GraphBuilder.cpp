@@ -14,7 +14,7 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
-#include "Global.h"
+#include "../Global.h"
 #include "Map.h"
 
 int NavigationGraph::IsPointBlocked(Vector3 p, const std::vector<Obstacle> &obstacles) {

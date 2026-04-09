@@ -7,14 +7,9 @@
 
 #include <memory>
 
-#include "raylib.h"
-#include "GraphBuilder.h"
-#include "Plane.h"
-#include "Map.h"
-#include "DStarLite.h"
-#include "FSM.h"
-#include "MPCController.h"
-#include <random>
+#include "State/State.h"
+
+
 
 class Engine {
 public:
@@ -26,26 +21,17 @@ public:
 private:
     void ProcessInput();
 
-    void InitializeSystem();
+    void ChangeState(StateType newState);
 
     void Update(float deltaTime);
     void Render();
 
 
-    Camera3D m_camera{};
+    StateType m_currentState;
+
     bool m_shouldClose = false;
-    NavigationGraph m_navGraph;
-    std::shared_ptr<Plane> m_plane;
-    std::shared_ptr<Plane> m_enemy;
+    std::shared_ptr<State> m_state;
 
-    std::vector<Obstacle> m_obstacles;
-    Map m_map;
-
-    Vector3 m_starPoint;
-    Vector3 m_targetPoint;
-
-    std::unique_ptr<FSM> m_fsm;
-    std::unique_ptr<MPCController> m_mpcController;
 
 };
 
