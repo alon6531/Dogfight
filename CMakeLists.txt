@@ -25,28 +25,46 @@ FetchContent_MakeAvailable(raylib)
 
 
 add_executable(Dogfight
-        main.cpp
-        Engine.cpp Engine.h
-        Global.h
-        Sims/GraphBuilder.h Sims/GraphBuilder.cpp
-        Sims/Plane.cpp Sims/Plane.h
-        Global.cpp
-        Sims/Map.cpp
-        Sims/Map.h
-        Sims/FSM.cpp
-        Sims/FSM.h
-        Sims/DStarLite.cpp
-        Sims/DStarLite.h
-        Sims/MPCController.cpp
-        Sims/MPCController.h
-        State/SimsState.cpp
-        State/SimsState.h
-        State/State.cpp
-        State/State.h
-        State/MenuState.cpp
-        State/MenuState.h
-        State/GameOverState.cpp
-        State/GameOverState.h
+        src/main.cpp
+        src/Engine/Engine.cpp src/Engine/Engine.h
+        src/Global.h
+        src/World/GraphBuilder.h src/World/GraphBuilder.cpp
+        src/Entities/Plane/Plane.cpp src/Entities/Plane/Plane.h
+        src/Global.cpp
+        src/World/Map.cpp
+        src/World/Map.h
+        src/Navigation/DStarLite.cpp
+        src/Navigation/DStarLite.h
+        src/Entities/Plane/Control/MPCController.cpp
+        src/Entities/Plane/Control/MPCController.h
+        src/WindowState/Type/SimsState.cpp
+        src/WindowState/Type/SimsState.h
+        src/WindowState/Base/State.cpp
+        src/WindowState/Base/State.h
+        src/WindowState/Type/MenuState.cpp
+        src/WindowState/Type/MenuState.h
+        src/WindowState/Type/GameOverState.cpp
+        src/WindowState/Type/GameOverState.h
+        src/Collision/GJK.cpp
+        src/Collision/GJK.h
+        src/Entities/Plane/AIState/Base/AIState.cpp
+        src/Entities/Plane/AIState/Base/AIState.h
+        src/Navigation/AStar.cpp
+        src/Navigation/AStar.h
+        src/Navigation/Dijkstra.cpp
+        src/Navigation/Dijkstra.h
+        src/Entities/Plane/AIState/Type/PatrolState.cpp
+        src/Entities/Plane/AIState/Type/PatrolState.h
+        src/Entities/Plane/AIState/Type/TakeOffState.cpp
+        src/Entities/Plane/AIState/Type/TakeOffState.h
+        src/Entities/Plane/Type/SelfPlane.cpp
+        src/Entities/Plane/Type/SelfPlane.h
+        src/Entities/Plane/AIState/Type/PursuitState.cpp
+        src/Entities/Plane/AIState/Type/PursuitState.h
+        src/Entities/Plane/AIState/Type/EvasionState.cpp
+        src/Entities/Plane/AIState/Type/EvasionState.h
+        src/Entities/Plane/AIState/Type/FuelState.cpp
+        src/Entities/Plane/AIState/Type/FuelState.h
 )
 
 
