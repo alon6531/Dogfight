@@ -375,7 +375,7 @@ void Plane::DrawLocked(Camera3D camera) const {
 
 void Plane::DrawHub() const {
     int panelX = 15, panelY = 15;
-    int panelWidth = 280, panelHeight = 350;
+    int panelWidth = 280, panelHeight = 375;
 
     auto DrawTextWithShadow = [](const char* text, int posX, int posY, int size, Color col) {
         DrawText(text, posX + 2, posY + 2, size, BLACK);
