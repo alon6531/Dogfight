@@ -4,7 +4,9 @@
 
 #include "SimsState.h"
 
+#include "imgui.h"
 #include "raymath.h"
+#include "rlImGui.h"
 #include "../../Engine/Engine.h"
 
 SimsState::SimsState(Engine &engine) : State(engine), m_map(), m_starPoint(), m_targetPoint() {
@@ -117,7 +119,7 @@ void SimsState::CameraHandle(float deltaTime) {
 }
 
 void SimsState::Update(float deltaTime) {
-    deltaTime *= 2;
+    float scaledDeltaTime = deltaTime * m_timeMultiplier;
 
 
 
@@ -173,8 +175,32 @@ void SimsState::Draw() {
 
     EndMode3D();
 
-    m_plane->DrawHub();
+
+
     m_plane->DrawLocked(m_camera);
     m_enemy->DrawLocked(m_camera);
     // m_enemy->DrawHub();
+
+    m_plane->DrawHub(p_engine.GetGameContext().m_showDebugUI);
+    if (p_engine.GetGameContext().m_showDebugUI) {
+        rlImGuiBegin();
+
+        // חלון בקרה כללי על המנוע (מוצב בצד שמאל למעלה)
+        ImGui::SetNextWindowPos({ 10, 10 }, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({ 200, 100 }, ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin("Engine Control")) {
+            ImGui::Text("Time Control");
+            ImGui::SliderFloat("Speed", (float*)&m_timeMultiplier, 0.0f, 5.0f, "%.1fx");
+
+            if (ImGui::Button("Normal")) m_timeMultiplier = 1.0f;
+            ImGui::SameLine();
+            if (ImGui::Button("Fast")) m_timeMultiplier = 3.0f;
+            ImGui::SameLine();
+            if (ImGui::Button("Slow")) m_timeMultiplier = 0.2f;
+        }
+        ImGui::End();
+
+        rlImGuiEnd();
+    }
 }

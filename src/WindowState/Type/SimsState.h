@@ -35,6 +35,7 @@ private:
     Model m_obstacleWiresModel;
     bool m_obstacleModelsLoaded = false;
 
+    float m_timeMultiplier = 1.0f;
 
 public:
     explicit SimsState(Engine& engine);

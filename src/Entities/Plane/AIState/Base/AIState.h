@@ -32,6 +32,8 @@ public:
 
     virtual Vector3 GetCurrentTargetFromAI() = 0;
 
+    virtual void DrawDebugUI(){};
+
 };
 
 

@@ -179,38 +179,27 @@ float NavigationGraph::GetHeuristic(int nIdx, int targetIdx) const {
 
 // Finds the index of the node closest to a given 3D position
 int NavigationGraph::GetClosestNode(Vector3 position) {
-
     int closestIdx = -1;
-
-    float minDist = FLT_MAX;
-
-
+    float minDistSq = FLT_MAX;
 
     for (int i = 0; i < (int)m_nodes.size(); i++) {
-
-
         if (m_nodes[i].neighbors.empty()) continue;
 
-
         Vector3 np = m_nodes[i].position;
-
         float dx = np.x - position.x;
         float dy = np.y - position.y;
         float dz = np.z - position.z;
 
-        float totalDistSq = (dx*dx + dz*dz) + (dy*dy * 15.0f);
+        // שינוי: מרחק אוקלידי רגיל. בלי ה-15.0f הישן.
+        // זה מבטיח שהמטוס יבחר את הצומת שבאמת הכי קרוב אליו.
+        float distSq = (dx * dx) + (dy * dy) + (dz * dz);
 
-
-        if (totalDistSq < minDist) {
-            minDist = totalDistSq;
+        if (distSq < minDistSq) {
+            minDistSq = distSq;
             closestIdx = i;
-
         }
-
     }
-
-    return closestIdx != -1 ? closestIdx : 0;
-
+    return (closestIdx != -1) ? closestIdx : 0;
 }
 
 int NavigationGraph::GetRandomNodeFarFrom(Vector3 position, float minDistance) const {

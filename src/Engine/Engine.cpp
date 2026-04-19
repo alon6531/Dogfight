@@ -7,12 +7,15 @@
 #include <iostream>
 #include <ostream>
 
+#include "imgui.h"
 #include "../Global.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "rlImGui.h"
 #include "../WindowState/Type/MenuState.h"
 #include "../WindowState/Type/SimsState.h"
 #include "../WindowState/Type/GameOverState.h"
+#include "imgui_internal.h"
 
 /**
  * Constructor
@@ -25,10 +28,10 @@ Engine::Engine() {
     //SetTargetFPS(240);
 
 
+    rlImGuiSetup(true);
 
 
-
-   ChangeState(WindowStateType::SIMULATION);
+    ChangeState(WindowStateType::SIMULATION);
 }
 
 /**
@@ -42,12 +45,12 @@ Engine::~Engine() {
  * Incharge of all the keyboard inputs
  */
 void Engine::ProcessInput() {
-
     if (WindowShouldClose()) m_shouldClose = true;
 
+    if (IsKeyPressed(KEY_TAB)) {
+        m_gameContext.m_showDebugUI = ! m_gameContext.m_showDebugUI;
+    }
 }
-
-
 
 
 /**
@@ -62,9 +65,7 @@ void Engine::Update(float deltaTime) {
 }
 
 void Engine::ChangeState(WindowStateType newState) {
-
     if (m_currentState != newState) {
-
         m_currentState = newState;
         switch (newState) {
             case WindowStateType::SIMULATION:
@@ -96,6 +97,7 @@ void Engine::Render() const {
 
 
 
+
     DrawFPS(WIN_WIDTH - 100, 10);
 
     EndDrawing();
@@ -103,10 +105,7 @@ void Engine::Render() const {
 
 
 void Engine::Run() {
-
-
     while (!m_shouldClose) {
-
         const float dt = GetFrameTime();
 
         ProcessInput();
@@ -116,4 +115,3 @@ void Engine::Run() {
         Render();
     }
 }
-

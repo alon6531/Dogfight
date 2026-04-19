@@ -4,15 +4,18 @@ project(Dogfight)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
+# --- הגדרות למניעת התנגשויות ImGui ו-Windows ---
+add_definitions(-DIMGUI_DISABLE_WIN32_DEFAULT_CLIPBOARD_FUNCTIONS)
+add_definitions(-DIMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS)
+
+# --- OpenMP ---
 find_package(OpenMP REQUIRED)
-
-
 if(OpenMP_CXX_FOUND)
     add_compile_options(-fopenmp)
-
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fopenmp")
 endif()
 
+# --- Raylib ---
 include(FetchContent)
 FetchContent_Declare(
         raylib
@@ -23,8 +26,20 @@ set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
 set(USE_AUDIO OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(raylib)
 
+# --- ImGui & rlImGui Setup ---
+set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/External/imgui")
+
+set(IMGUI_SOURCES
+        "${IMGUI_DIR}/imgui.cpp"
+        "${IMGUI_DIR}/imgui_draw.cpp"
+        "${IMGUI_DIR}/imgui_widgets.cpp"
+        "${IMGUI_DIR}/imgui_tables.cpp"
+        "${IMGUI_DIR}/imgui_demo.cpp"
+        "${IMGUI_DIR}/rlImGui.cpp"
+)
 
 add_executable(Dogfight
+        ${IMGUI_SOURCES}
         src/main.cpp
         src/Engine/Engine.cpp src/Engine/Engine.h
         src/Global.h
@@ -67,15 +82,22 @@ add_executable(Dogfight
         src/Entities/Plane/AIState/Type/FuelState.h
 )
 
-
 target_link_libraries(Dogfight PUBLIC raylib)
+
+# ספריות מערכת שנדרשות עבור ImGui ב-Windows
+if(WIN32)
+    target_link_libraries(Dogfight PUBLIC shell32 user32 gdi32 winmm imm32)
+endif()
 
 if (OpenMP_CXX_FOUND)
     target_link_libraries(Dogfight PUBLIC OpenMP::OpenMP_CXX)
-
     target_link_libraries(Dogfight PUBLIC gomp)
 endif()
 
-target_include_directories(Dogfight PUBLIC ${raylib_SOURCE_DIR}/src)
+target_include_directories(Dogfight PUBLIC
+        ${raylib_SOURCE_DIR}/src
+        ${IMGUI_DIR}
+)
 
-add_definitions(-DNOGDI -DNOUSER -DWIN32_LEAN_AND_MEAN)
+# הגדרות Raylib (הורדנו את ה-WIN32_LEAN_AND_MEAN כדי לא לחסום את ImGui)
+add_definitions(-DNOGDI -DNOUSER)

@@ -48,7 +48,7 @@ public:
 
     void DrawForceVectors() const;
 
-    void DrawHub() const;
+    void DrawHub(bool showDebug) const;
     void DrawLocked(Camera3D camera) const;
 
     // Getters & Setters

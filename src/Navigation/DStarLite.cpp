@@ -1,81 +1,88 @@
 #include "DStarLite.h"
-#include <iostream>
-#include <unordered_set>
-
+#include <limits>
+#include <algorithm>
 
 #include "raymath.h"
 
-DStarLite::DStarLite(NavigationGraph& graph) : m_graph(graph), m_startNodeIdx(-1), m_targetNodeIdx(-1), m_kM(0) {}
+// שימוש בקבועים ברורים למניעת Overflow
+const float INF = std::numeric_limits<float>::infinity();
+
+DStarLite::DStarLite(NavigationGraph& graph)
+    : m_graph(graph), m_startNodeIdx(-1), m_targetNodeIdx(-1), m_kM(0.0f) {
+    // אתחול וקטור הצמתים מראש לפי גודל הגרף לביצועים מקסימליים
+    m_nodeData.resize(m_graph.GetNodes().size(), {INF, INF, 0});
+}
 
 std::pair<float, float> DStarLite::CalculateKey(int s) {
+    if (s < 0 || s >= (int)m_nodeData.size()) return {INF, INF};
 
-    if (s < 0 || s >= (int)m_graph.GetNodes().size()) return { 1e9f, 1e9f };
+    float g = m_nodeData[s].g;
+    float rhs = m_nodeData[s].rhs;
+    float min_g_rhs = std::min(g, rhs);
 
+    // Heuristic: מרחק אווירי למיקום הנוכחי של הרובוט
     float h = Vector3Distance(m_graph.GetNodes()[s].position, m_graph.GetNodes()[m_startNodeIdx].position);
 
-    float g = m_nodes.count(s) ? m_nodes[s].g : 1e9f;
-    float rhs = m_nodes.count(s) ? m_nodes[s].rhs : 1e9f;
-
-    float min_g_rhs = std::min(g, rhs);
     return { min_g_rhs + h + m_kM, min_g_rhs };
 }
 
 void DStarLite::UpdateVertex(int u) {
-    if (u < 0 || u >= (int)m_graph.GetNodes().size()) return;
+    if (u < 0 || u >= (int)m_nodeData.size()) return;
 
-
-    if (m_nodes.count(u) == 0) {
-        m_nodes[u] = { 1e9f, 1e9f };
-    }
-
+    // עדכון RHS (למעט המטרה שהיא תמיד 0)
     if (u != m_targetNodeIdx) {
-        float minRhs = 1e9f;
-        for (auto& edge : m_graph.GetNodes()[u].neighbors) {
-            float gVal = m_nodes.count(edge.target) ? m_nodes[edge.target].g : 1e9f;
-            float val = gVal + edge.weight;
-            if (val < minRhs) minRhs = val;
+        m_nodeData[u].rhs = INF;
+        for (const auto& edge : m_graph.GetNodes()[u].neighbors) {
+            float targetG = m_nodeData[edge.target].g;
+            if (targetG != INF) {
+                m_nodeData[u].rhs = std::min(m_nodeData[u].rhs, targetG + edge.weight);
+            }
         }
-        m_nodes[u].rhs = minRhs;
     }
 
-
-    if (m_nodes[u].g != m_nodes[u].rhs) {
-        m_nodes[u].gen++;
-        m_openSet.push({ CalculateKey(u), u, m_nodes[u].gen });
+    // אם הצומת לא עקבי, נדחוף לתור העדכונים
+    if (m_nodeData[u].g != m_nodeData[u].rhs) {
+        m_nodeData[u].gen++; // מנגנון גרסאות למניעת כפילויות בתור
+        m_openSet.push({ CalculateKey(u), u, m_nodeData[u].gen });
     }
 }
 
 void DStarLite::ComputeShortestPath() {
-    int iterations = 0;
-    while (!m_openSet.empty() &&
-           (m_openSet.top().key < CalculateKey(m_startNodeIdx) ||
-            m_nodes[m_startNodeIdx].rhs != m_nodes[m_startNodeIdx].g))
-    {
-        if (iterations++ > 500) break;
+    int safetyCounter = 0;
 
-        auto entry = m_openSet.top(); m_openSet.pop();
-        int u = entry.node;
+    while (!m_openSet.empty() && safetyCounter++ < 1000) {
+        auto top = m_openSet.top();
+        auto startKey = CalculateKey(m_startNodeIdx);
 
+        // תנאי העצירה הקלאסי של D* Lite
+        if (!(top.key < startKey || m_nodeData[m_startNodeIdx].rhs != m_nodeData[m_startNodeIdx].g)) {
+            break;
+        }
 
-        if (entry.gen != m_nodes[u].gen) continue;
+        m_openSet.pop();
+        if (top.gen != m_nodeData[top.node].gen) continue; // דילוג על איברים ישנים
 
-        auto k_old = entry.key;
+        int u = top.node;
         auto k_new = CalculateKey(u);
 
-        if (k_old < k_new) {
-            m_nodes[u].gen++;
-            m_openSet.push({ k_new, u, m_nodes[u].gen });
+        if (top.key < k_new) {
+            m_nodeData[u].gen++;
+            m_openSet.push({ k_new, u, m_nodeData[u].gen });
         }
-        else if (m_nodes[u].g > m_nodes[u].rhs) {
-            m_nodes[u].g = m_nodes[u].rhs;
-            for (auto& edge : m_graph.GetNodes()[u].neighbors)
+        else if (m_nodeData[u].g > m_nodeData[u].rhs) {
+            // צומת Overconsistent
+            m_nodeData[u].g = m_nodeData[u].rhs;
+            for (const auto& edge : m_graph.GetNodes()[u].neighbors) {
                 UpdateVertex(edge.target);
+            }
         }
         else {
-            m_nodes[u].g = 1e9f;
+            // צומת Underconsistent
+            m_nodeData[u].g = INF;
             UpdateVertex(u);
-            for (auto& edge : m_graph.GetNodes()[u].neighbors)
+            for (const auto& edge : m_graph.GetNodes()[u].neighbors) {
                 UpdateVertex(edge.target);
+            }
         }
     }
 }
@@ -84,70 +91,46 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
     int newStart = m_graph.GetClosestNode(startPos);
     int newTarget = m_graph.GetClosestNode(targetPos);
 
+    if (newStart == -1 || newTarget == -1) return {};
 
-
-    if (newStart != m_startNodeIdx) {
-
-        float dist = Vector3Distance(m_graph.GetNodes()[m_startNodeIdx].position, m_graph.GetNodes()[newStart].position);
-        if (!std::isnan(dist)) {
-            m_kM += dist;
-            m_startNodeIdx = newStart;
-        }
+    // טיפול בתנועת הרובוט (עדכון kM)
+    if (m_startNodeIdx != -1 && newStart != m_startNodeIdx) {
+        m_kM += Vector3Distance(m_graph.GetNodes()[m_startNodeIdx].position, m_graph.GetNodes()[newStart].position);
     }
+    m_startNodeIdx = newStart;
 
+    // אם המטרה השתנתה - איפוס הכרחי
     if (newTarget != m_targetNodeIdx) {
-        int oldTarget = m_targetNodeIdx;
-        if (m_nodes.count(oldTarget)) {
-            m_nodes[oldTarget].rhs = 1e9f;
-            UpdateVertex(oldTarget);
-        }
-
         m_targetNodeIdx = newTarget;
-        if (m_nodes.count(m_targetNodeIdx) == 0) m_nodes[m_targetNodeIdx] = { 1e9f, 1e9f };
-        m_nodes[m_targetNodeIdx].rhs = 0.0f;
+        // איפוס נתונים רק כשמטרה משתנה (אופציונלי, תלוי אם המפה משתנה)
+        std::fill(m_nodeData.begin(), m_nodeData.end(), DStarNode{INF, INF, 0});
+        m_nodeData[m_targetNodeIdx].rhs = 0.0f;
         UpdateVertex(m_targetNodeIdx);
-
-        float tDist = Vector3Distance(m_graph.GetNodes()[oldTarget].position, m_graph.GetNodes()[newTarget].position);
-        if (!std::isnan(tDist)) m_kM += tDist;
     }
-
 
     ComputeShortestPath();
 
-
+    // בניית המסלול מההתחלה למטרה
     std::vector<Vector3> path;
     int curr = m_startNodeIdx;
+    int stepLimit = 100;
 
-    std::unordered_set<int> visited;
-    for (int step = 0; step < 80; step++) {
-        if (curr < 0 || curr >= (int)m_graph.GetNodes().size()) break;
-
+    while (curr != -1 && curr != m_targetNodeIdx && stepLimit-- > 0) {
         path.push_back(m_graph.GetNodes()[curr].position);
-        if (curr == m_targetNodeIdx) break;
-        visited.insert(curr);
 
-        int nextNode = -1;
-        float minCost = 1e9f;
-        float bestEdgeWeight = 0.0f;
+        int bestNext = -1;
+        float minCost = INF;
 
-        for (auto& edge : m_graph.GetNodes()[curr].neighbors) {
-            if (visited.count(edge.target)) continue;
-
-            float gVal = m_nodes.count(edge.target) ? m_nodes[edge.target].g : 1e9f;
-            float edgeCost = edge.weight + gVal;
-
-            if (edgeCost < minCost) {
-                minCost = edgeCost;
-                nextNode = edge.target;
-                bestEdgeWeight = edge.weight;
+        for (const auto& edge : m_graph.GetNodes()[curr].neighbors) {
+            float cost = edge.weight + m_nodeData[edge.target].g;
+            if (cost < minCost) {
+                minCost = cost;
+                bestNext = edge.target;
             }
         }
-
-        if (nextNode == -1 || nextNode == curr) break;
-        m_lastPathWeight += bestEdgeWeight;
-        curr = nextNode;
+        curr = bestNext;
     }
 
-
+    if (curr == m_targetNodeIdx) path.push_back(m_graph.GetNodes()[curr].position);
     return path;
 }

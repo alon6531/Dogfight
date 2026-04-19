@@ -30,6 +30,7 @@ private:
     NavigationGraph& m_graph;
     std::unordered_map<int, DStarNode> m_nodes;
     float m_lastPathWeight = 0.0f;
+    std::vector<DStarNode> m_nodeData;
 
     struct OpenEntry {
         std::pair<float,float> key;

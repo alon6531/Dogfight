@@ -14,7 +14,7 @@ struct GameContext {
 
     bool isVictory = false;
     int cameraMode = 0;
-
+    bool m_showDebugUI = true;
 
 };
 
@@ -44,6 +44,7 @@ private:
 
     bool m_shouldClose = false;
     std::unique_ptr<State> m_state;
+
 
 
 };

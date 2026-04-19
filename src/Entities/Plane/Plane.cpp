@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "raymath.h"
+#include "rlImGui.h"
 #include "../../World/Map.h"
 #include "AIState/Type/EvasionState.h"
 #include "AIState/Type/PatrolState.h"
@@ -89,6 +90,9 @@ void Plane::ChangeAIState(AIStateType newState, NavigationGraph& graph) {
 }
 
 void Plane::UpdatePhysics(float deltaTime, const Map& map, const std::vector<Obstacle>& obstacles) {
+
+    if (m_fuel >= 0)
+        m_fuel -= m_thrust * deltaTime;
     // 1. חישוב מהירות בריבוע (מהיר בהרבה מ-Length)
     float vx = m_velocity.x, vy = m_velocity.y, vz = m_velocity.z;
     float speedSq = vx*vx + vy*vy + vz*vz;
@@ -237,6 +241,7 @@ void Plane::Draw() {
     m_model.transform = finalTransform;
     DrawModel(m_model, { 0, 0, 0 }, 1.0f, WHITE);
 
+
     DrawPath();
     DrawForceVectors();
 }
@@ -333,7 +338,9 @@ void Plane::DrawLocked(Camera3D camera) const {
 }
 
 
-void Plane::DrawHub() const {
+void Plane::DrawHub(bool showDebug) const {
+
+
     int panelX = 15, panelY = 15;
     int panelWidth = 280, panelHeight = 375;
 
@@ -438,6 +445,15 @@ void Plane::DrawHub() const {
 
     if (fuelPerc <= 0.0f) {
         DrawTextWithShadow("ENGINE STALL - NO FUEL", x + 40, y + 20, 14, RED);
+    }
+
+
+    if (showDebug) {
+        rlImGuiBegin();
+
+        if (m_fsm) m_fsm->DrawDebugUI();
+
+        rlImGuiEnd();
     }
 
 }
