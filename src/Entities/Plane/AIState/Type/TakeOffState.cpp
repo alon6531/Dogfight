@@ -19,7 +19,7 @@ TakeOffState::TakeOffState(Plane &self, NavigationGraph &navGraph)
 
 
     Vector3 stayOnGround = Vector3Add(currentPos, Vector3Scale(forward, 40.0f));
-    stayOnGround.y = currentPos.y - 5;
+    stayOnGround.y = currentPos.y ;
 
     Vector3 endOfRunway = Vector3Add(currentPos, Vector3Scale(forward, minTakeoffDist * 2.8f));
     endOfRunway.y = currentPos.y;

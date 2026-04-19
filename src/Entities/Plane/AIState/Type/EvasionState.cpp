@@ -16,75 +16,105 @@ EvasionState::EvasionState(Plane &self, NavigationGraph &navGraph,
 EvasionState::~EvasionState() = default;
 
 AIStateType EvasionState::Update(float deltaTime) {
-    // --- הגדרות מאוזנות למהירות גבוהה (3.5x) ---
-    const float WAYPOINT_REACH_DIST  = 250.0f;   // הגדלנו: במהירות גבוהה צריך רדיוס פגיעה גדול יותר
-    const int   MAX_NODES_IN_PATH    = 10;         // פחות צמתים = חישוב מהיר ופחות זיגזגים
-    const float ESCAPE_MIN_DIST      = 1000.0f;   // הגדלנו: תברח רחוק באמת לפני שאתה מנסה להילחם
-    const float ESCAPE_SEARCH_RADIUS = 3000.0f;
+    const int   MIN_PATH_NODES      = 2;         // אם יש פחות מ-3 נודים, תחשב נתיב חדש
+    const int   TARGET_PATH_LENGTH  = 4;        // כמה נודים לייצר בכל תכנון
+    const float REACH_RADIUS_SQ      = 6400.0f;   // 80^2
+    const float TACTICAL_ALT_DIFF    = 50.0f;
+    const float MAX_ALLOWED_WEIGHT   = 12000.0f;
+    const float TURN_DIST   = 300.0f;
 
-    if (!m_enemy || !m_dStarLite) return AIStateType::IDLE;
 
     Vector3 selfPos = p_self.GetPosition();
     Vector3 enemyPos = m_enemy->GetPosition();
     float distToEnemy = Vector3Distance(selfPos, enemyPos);
-    AIStateType enemyState = m_enemy->GetCurrentStateType();
 
-    // --- 1. בדיקת יציאה חכמה (מניעת שיגעון) ---
-    Vector3 dirToMe = Vector3Normalize(Vector3Subtract(selfPos, enemyPos));
-    float enemyAlignment = Vector3DotProduct(m_enemy->GetForward(), dirToMe);
+    // בדיקה: האם האויב נועל אותי? (m_enemy->isLocked אומר שהוא נועל מטרה)
+    bool beingLocked = m_enemy->GetTargetLock().isLocked;
 
-    Vector3 dirToEnemy = Vector3Normalize(Vector3Subtract(enemyPos, selfPos));
-    float myAlignmentOnEnemy = Vector3DotProduct(p_self.GetForward(), dirToEnemy);
+    // --- שלב 1: ניהול תימרון היפוך (Loop) ---
+    if (m_isPerformingLoop) {
+        Vector3 dirToEnemy = Vector3Normalize(Vector3Subtract(enemyPos, selfPos));
+        float alignment = Vector3DotProduct(p_self.GetForward(), dirToEnemy);
 
-    // יציאה ל-PURSUIT רק אם:
-    // א. האויב בורח מאיתנו (ניצחנו במרדף)
-    // ב. או שאנחנו רחוקים מאוד וגם האף שלנו כבר פונה לכיוונו
-    bool canTurnToFight = (distToEnemy > ESCAPE_MIN_DIST && myAlignmentOnEnemy > 0.3f);
+        // אם השלמנו את הסיבוב, אנחנו מעליו ומסתכלים עליו - חזרה למרדף
+        if (alignment > 0.85f && selfPos.y > enemyPos.y + 20.0f) {
+            m_isPerformingLoop = false;
+            p_path.clear();
+            return AIStateType::PURSUIT;
+        }
 
-    if (enemyState == AIStateType::EVASION || canTurnToFight) {
-        p_path.clear();
-        return AIStateType::PURSUIT;
+        if (p_path.empty()) m_isPerformingLoop = false;
     }
 
-    // --- 2. חישוב נתיב בריחה (אופטימיזציה ל-CPU) ---
-    // אנחנו מחשבים נתיב חדש רק כשהישן כמעט נגמר, ולא מוחקים אותו עד שהחדש מוכן
-    if (p_path.size() < 2) {
-        int escapeNodeIdx = p_graph.GetRandomNodeFarFrom(enemyPos, ESCAPE_SEARCH_RADIUS);
+    // --- שלב 2: בחירת אסטרטגיה (לפי כמות Nodes) ---
+    if (!m_isPerformingLoop && p_path.size() < MIN_PATH_NODES) {
 
-        if (escapeNodeIdx != -1) {
-            Vector3 targetPos = p_graph.GetNodes()[escapeNodeIdx].position;
+        // 1. הגנה אקטיבית: שבירת נעילה (Notch)
+        if (beingLocked) {
+            Vector3 dirFromEnemy = Vector3Normalize(Vector3Subtract(selfPos, enemyPos));
+            Vector3 notchDir = Vector3Normalize(Vector3CrossProduct(dirFromEnemy, {0, 1, 0}));
+            if (Vector3DotProduct(p_self.GetForward(), notchDir) < 0) notchDir = Vector3Negate(notchDir);
 
-            // חישוב נתיב לוקאלי
-            auto pathPoints = m_dStarLite->PlanPath(selfPos, targetPos);
+            p_path.clear();
+            p_path.push_back(Vector3Add(selfPos, Vector3Scale(notchDir, 600.0f)));
+        }
 
-            if (!pathPoints.empty()) {
-                p_path.clear();
-                int nodesCount = 0;
-                for (const auto &pt : pathPoints) {
-                    if (nodesCount >= MAX_NODES_IN_PATH) break;
-                    p_path.push_back(pt);
-                    nodesCount++;
+        else if (distToEnemy < TURN_DIST) {
+            for (int attempt = 0; attempt < 5; attempt++) {
+                int escapeIdx = p_graph.GetRandomNodeFarFrom(enemyPos, 2000.0f);
+                if (escapeIdx == -1) continue;
+
+                auto pts = m_dStarLite->PlanPath(selfPos, p_graph.GetNodes()[escapeIdx].position);
+                float cost = m_dStarLite->GetLastPathCost();
+
+                if (!pts.empty() && cost > 0 && cost < MAX_ALLOWED_WEIGHT) {
+                    p_path.clear();
+                    int count = 0;
+                    for(const auto& p : pts) {
+                        p_path.push_back(p);
+                        if (++count >= TARGET_PATH_LENGTH) break; // מגביל את אורך הנתיב
+                    }
+                    break;
                 }
             }
         }
+        // 3. יתרון גובה: אם האויב רחוק מספיק, נתחיל את הטיפוס
+        else {
+            m_isPerformingLoop = true;
+            p_path.clear();
+
+            // במקום לטוס לכיוון האויב, אנחנו מושכים ישר למעלה מהמיקום הנוכחי שלנו
+            // זה מבטל את ה"איגוף" המיותר ב-X ו-Z
+            Vector3 climbPoint = { selfPos.x, enemyPos.y + TACTICAL_ALT_DIFF, selfPos.z };
+
+            // נקודת ההיפוך תהיה מעט קדימה מהכיוון הנוכחי שלנו, אבל בגובה
+            Vector3 forwardBoost = Vector3Scale(p_self.GetForward(), 100.0f);
+            Vector3 flipPoint = Vector3Add(climbPoint, forwardBoost);
+
+            p_path.push_back(climbPoint);
+            p_path.push_back(flipPoint);
+        }
     }
 
-    // --- 3. ניווט והיגוי ---
+    // --- שלב 3: תנועה ---
     if (!p_path.empty()) {
         Vector3 nextTarget = p_path.front();
         m_currentDir = nextTarget;
 
-        // בדיקת הגעה לנקודה
-        if (Vector3Distance(selfPos, nextTarget) < WAYPOINT_REACH_DIST) {
+        float dx = nextTarget.x - selfPos.x;
+        float dy = nextTarget.y - selfPos.y;
+        float dz = nextTarget.z - selfPos.z;
+
+        if ((dx*dx + dy*dy + dz*dz) < REACH_RADIUS_SQ) {
             p_path.pop_front();
-            if (!p_path.empty()) nextTarget = p_path.front();
         }
 
         p_self.SteerTowards(nextTarget, deltaTime);
     } else {
-        // Fallback: אם אין נתיב, פשוט טוס ישר קדימה כדי לשמור על המהירות והבוסט
-        Vector3 forwardEscape = Vector3Add(selfPos, Vector3Scale(p_self.GetForward(), 500.0f));
-        p_self.SteerTowards(forwardEscape, deltaTime);
+        // Fallback
+        Vector3 escapeDir = Vector3Normalize(Vector3Subtract(selfPos, enemyPos));
+        m_currentDir = Vector3Add(selfPos, Vector3Scale(escapeDir, 1000.0f));
+        p_self.SteerTowards(m_currentDir, deltaTime);
     }
 
     return AIStateType::EVASION;

@@ -24,10 +24,12 @@ public:
 
     std::vector<Vector3> PlanPath(Vector3 startPos, Vector3 targetPos);
 
+    float GetLastPathCost() const { return m_lastPathWeight; }
+
 private:
     NavigationGraph& m_graph;
     std::unordered_map<int, DStarNode> m_nodes;
-    
+    float m_lastPathWeight = 0.0f;
 
     struct OpenEntry {
         std::pair<float,float> key;

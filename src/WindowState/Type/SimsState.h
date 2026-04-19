@@ -35,8 +35,13 @@ private:
     Model m_obstacleWiresModel;
     bool m_obstacleModelsLoaded = false;
 
+
 public:
     explicit SimsState(Engine& engine);
+
+    bool EndSimsCheck();
+
+    void CameraHandle(float deltaTime);
 
     void Update(float deltaTime) override;
 

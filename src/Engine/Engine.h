@@ -36,7 +36,7 @@ private:
 
 
     void Update(float deltaTime);
-    void Render();
+    void Render() const;
 
 
     GameContext m_gameContext;

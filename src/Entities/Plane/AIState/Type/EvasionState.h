@@ -5,7 +5,7 @@
 #ifndef DOGFIGHT_EVASIONSTATE_H
 #define DOGFIGHT_EVASIONSTATE_H
 
-#define MAX_THRUST_EVASION 50.0f
+#define MAX_THRUST_EVASION 270.0f
 
 #include <memory>
 #include <utility>
@@ -18,7 +18,7 @@ private:
     std::shared_ptr<Plane> m_enemy= nullptr;
     std::unique_ptr<DStarLite> m_dStarLite= nullptr;
     Vector3 m_currentDir = {};
-
+    bool m_isPerformingLoop = false;
 
 public:
     EvasionState(Plane &self, NavigationGraph &navGraph, std::shared_ptr<Plane> enemy);

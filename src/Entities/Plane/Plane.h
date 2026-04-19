@@ -40,7 +40,7 @@ public:
     virtual ~Plane();
 
 
-    void Update(float deltaTime, NavigationGraph& graph, Map& map, std::vector<Obstacle>& obstacles);
+    void Update(float deltaTime, NavigationGraph& graph, const Map& map, const std::vector<Obstacle>& obstacles);
 
     void SteerTowards(Vector3 target, float deltaTime);
 
@@ -135,7 +135,9 @@ private:
 
 
     void ChangeAIState(AIStateType newState, NavigationGraph& graph);
-    void UpdatePhysics(float deltaTime, Map& map, std::vector<Obstacle>& obstacles);
+    void UpdatePhysics(float deltaTime, const Map& map, const std::vector<Obstacle>& obstacles);
+
+    void CheckGroundCollision(const Map &map, float deltaTime);
 
     void DrawPath() const;
 

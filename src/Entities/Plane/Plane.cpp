@@ -16,19 +16,19 @@ Plane::Plane(const Vector3 &position, const Vector3 &velocity, const Color &colo
     : m_position(position), m_velocity(velocity), m_targetPos(targetPos), m_basePos(position)
 {
     m_forward = { 1, 0, 0 };
-    // m_mesh = GenMeshCube(200, 20, 50);
-    // m_model = LoadModelFromMesh(m_mesh);
-    // m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].color = color;
-    m_model = LoadModel("Assets/plane.glb");
-
-    for (int i = 0; i < m_model.materialCount; i++) {
-        auto &mat = m_model.materials[i];
-        mat.maps[MATERIAL_MAP_ALBEDO].color = color;
-    }
+    m_mesh = GenMeshCube(200, 20, 50);
+    m_model = LoadModelFromMesh(m_mesh);
+    m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].color = color;
+    // m_model = LoadModel("Assets/plane.glb");
+    //
+    // for (int i = 0; i < m_model.materialCount; i++) {
+    //     auto &mat = m_model.materials[i];
+    //     mat.maps[MATERIAL_MAP_ALBEDO].color = color;
+    // }
 
     m_fuel = MAX_FUEL;
 
-    m_mpc = std::make_unique<MPCController>(10, 3);
+    m_mpc = std::make_unique<MPCController>(0, 0);
 
    ChangeAIState(AIStateType::TAKEOFF, graph);
 
@@ -38,36 +38,24 @@ Plane::~Plane() {
     UnloadModel(m_model);
 }
 
-void Plane::Update(float deltaTime, NavigationGraph& graph, Map& map, std::vector<Obstacle>& obstacles) {
+void Plane::Update(float deltaTime, NavigationGraph& graph, const Map& map, const std::vector<Obstacle>& obstacles) {
+
     if (m_fsm) {
         AIStateType nextState = m_fsm->Update(deltaTime);
 
-        static float stateChangeTimer = 0.0f;
-        stateChangeTimer += deltaTime;
-
-        if (m_currentStateType == AIStateType::PURSUIT) {
-            Vector3 dirToMe = Vector3Normalize(Vector3Subtract(m_position, m_enemy->GetPosition()));
-            float enemyAlignment = Vector3DotProduct(m_enemy->GetForward(), dirToMe);
-            float distToEnemy = Vector3Distance(m_position, m_enemy->GetPosition());
-
-            if (enemyAlignment > 0.9f && distToEnemy < 500.0f && stateChangeTimer > 3.0f) {
-                nextState = AIStateType::EVASION;
-            }
-        }
-
         if (nextState != m_currentStateType) {
             ChangeAIState(nextState, graph);
-            stateChangeTimer = 0.0f;
         }
     }
 
-    if (m_fuel <= ESCAPE_FUEL && m_fuel >= ESCAPE_FUEL - 30) {
+
+    if (m_fuel <= ESCAPE_FUEL && m_fuel >= ESCAPE_FUEL - 30.0f) {
         m_targetPos = m_basePos;
         ChangeAIState(AIStateType::PATROL, graph);
     }
 
+    // 3. עדכון מערכות
     UpdateLockSystem(deltaTime);
-
     UpdatePhysics(deltaTime, map, obstacles);
 }
 
@@ -100,74 +88,45 @@ void Plane::ChangeAIState(AIStateType newState, NavigationGraph& graph) {
     }
 }
 
-void Plane::UpdatePhysics(float deltaTime, Map& map, std::vector<Obstacle>& obstacles) {
-    m_gravity = GRAVITY * MASS;
-    float currentSpeed = Vector3Length(m_velocity);
-    float throttle = (m_fsm && !m_fsm->GetPath().empty()) ? 1.0f : 0.0f;
+void Plane::UpdatePhysics(float deltaTime, const Map& map, const std::vector<Obstacle>& obstacles) {
+    // 1. חישוב מהירות בריבוע (מהיר בהרבה מ-Length)
+    float vx = m_velocity.x, vy = m_velocity.y, vz = m_velocity.z;
+    float speedSq = vx*vx + vy*vy + vz*vz;
+    float currentSpeed = sqrtf(speedSq);
 
-    float speedMultiplier = 1.0f;
-    float dragReducer = 1.0f;
-    if (m_currentStateType == AIStateType::EVASION) {
-        speedMultiplier = 1.5f;
-        dragReducer = 0.5f;
-    }
-    float climbBoost = fmaxf(0.0f, m_forward.y) * CLIMB_EXTRA_POWER;
-    m_thrust = throttle * (MAX_THRUST + climbBoost) * speedMultiplier;
-    m_drug = (currentSpeed * currentSpeed) * DRAG_COEFF * dragReducer;
+    // 2. חישוב כוחות בסיסי - צמצום קריאות ל-FSM
+    bool hasPath = (m_fsm != nullptr);
+    float throttle = hasPath ? 1.0f : 0.0f;
+
+    m_thrust =  throttle * (m_currentStateType == AIStateType::EVASION ? MAX_THRUST_EVASION :  MAX_THRUST + (fmaxf(0.0f, m_forward.y) * CLIMB_EXTRA_POWER));
+    m_drug = speedSq * DRAG_COEFF;
     m_lift = currentSpeed * 0.85f;
 
+    // 3. עדכון כיוון (רק אם יש MPC/היגוי)
+    // הערה: אם mpcSteerDir ריק, תשתמש ב-m_forward הקיים
+    // m_forward = Vector3Normalize(Vector3Lerp(m_forward, mpcSteerDir, 2.0f * deltaTime));
 
-    Vector3 avoidanceDir = { 0, 0, 0 };
-    for (const auto& obs : obstacles) {
-        float dist = Vector3Distance(m_position, obs.pos);
-        float safeZone = obs.radius + 50.0f;
+    // 4. איחוד חישובי תאוצה
+    float totalAcc = (m_thrust - m_drug) + (-m_forward.y * SLOPE_EFFECT);
+    float newSpeed = fmaxf(0.1f, currentSpeed + (totalAcc * deltaTime));
 
-        if (dist < safeZone) {
-            Vector3 push = Vector3Normalize(Vector3Subtract(m_position, obs.pos));
-            float weight = (1.0f - (dist / safeZone));
-            avoidanceDir = Vector3Add(avoidanceDir, Vector3Scale(push, weight));
-        }
+    // עדכון וקטור המהירות
+    m_velocity.x = m_forward.x * newSpeed;
+    m_velocity.y = m_forward.y * newSpeed + (m_lift - (GRAVITY * MASS)) * deltaTime;
+    m_velocity.z = m_forward.z * newSpeed;
+
+    // 5. ה-FPS KILLER: בדיקת קרקע
+    // תבצע את הבדיקה רק אם המטוס נמצא מתחת לגובה "סכנה" אבסולוטי
+    if (m_position.y < 0.0f) {
+        CheckGroundCollision(map, deltaTime);
     }
-    if (Vector3LengthSqr(avoidanceDir) > 0.001f) {
-        Vector3 newTargetDir = Vector3Normalize(Vector3Add(m_forward, avoidanceDir));
-        float avoidanceAgility = 3.0f;
-        m_forward = Vector3Normalize(Vector3Lerp(m_forward, newTargetDir, avoidanceAgility * deltaTime));
-    }
 
+    m_position.x += m_velocity.x * deltaTime;
+    m_position.y += m_velocity.y * deltaTime;
+    m_position.z += m_velocity.z * deltaTime;
+}
 
-    float rotationAgility = 2.0f;
-
-
-    Vector3 targetDir = Vector3Normalize(Vector3Subtract(m_targetPos, m_position));
-    Vector3 right = Vector3CrossProduct(m_forward, {0, 1, 0});
-    float turnAmount = Vector3DotProduct(targetDir, right);
-
-
-    float targetBank = turnAmount * 45.0f;
-
-
-    m_bankAngle = Lerp(m_bankAngle, targetBank, rotationAgility * deltaTime);
-
-    const Vector3 currentTarget = m_fsm->GetCurrentTargetFromAI();
-
-
-    const Vector3 mpcSteerDir = m_mpc->CalculateBestSteer(m_position, m_velocity, m_forward, currentTarget, obstacles, m_enemy);
-
-
-    const float agility = 2.0f;
-    m_forward = Vector3Normalize(Vector3Lerp(m_forward, mpcSteerDir, agility * deltaTime));
-
-
-    float pitchInertia = -m_forward.y * SLOPE_EFFECT;
-    float totalAcceleration = (m_thrust - m_drug) + pitchInertia;
-    float newForwardSpeed = currentSpeed + (totalAcceleration * deltaTime);
-    if (newForwardSpeed < 0.1f) newForwardSpeed = 0.1f;
-
-    float verticalNetForce = m_lift - m_gravity;
-    m_velocity = Vector3Scale(m_forward, newForwardSpeed);
-    m_velocity.y += verticalNetForce * deltaTime;
-
-
+void Plane::CheckGroundCollision(const Map& map, float deltaTime) {
     float groundHeight = map.GetHeightAt(m_position.x, m_position.z);
     float safeDistance = 5.0f;
     float distanceToGround = m_position.y - groundHeight;
@@ -191,10 +150,6 @@ void Plane::UpdatePhysics(float deltaTime, Map& map, std::vector<Obstacle>& obst
     else {
         m_normal = 0;
     }
-
-    m_fuel -= m_thrust * 0.01;
-
-    m_position = Vector3Add(m_position, Vector3Scale(m_velocity, deltaTime));
 }
 
 void Plane::SteerTowards(Vector3 target, float deltaTime) {
@@ -207,33 +162,34 @@ void Plane::SteerTowards(Vector3 target, float deltaTime) {
 }
 
 void Plane::UpdateLockSystem(float deltaTime) {
-
     if (!m_enemy) {
         m_targetLock.isLocked = false;
         m_targetLock.lockProgress = 0.0f;
         return;
     }
 
+    // ניצחון סופי אם הטיימר נגמר
     if (m_targetLock.lockTimer <= 0)
         m_targetLock.finalLock = true;
 
-
     Vector3 selfPos = m_position;
     Vector3 enemyPos = m_enemy->GetPosition();
+
+    // חישוב כיוון ומרחק (אופטימיזציה: מרחק בריבוע לביצועים אם תרצה, אבל נשאר עקבי עם הקוד שלך)
     Vector3 dirToEnemy = Vector3Normalize(Vector3Subtract(enemyPos, selfPos));
-
-
     float alignment = Vector3DotProduct(m_forward, dirToEnemy);
     float distToEnemy = Vector3Distance(selfPos, enemyPos);
 
-
     const float MAX_LOCK_DIST = 600.0f;
     const float LOCK_CONE = 0.97f;
-    const float LOCK_SPEED = 0.3f;
+    const float LOCK_SPEED = 0.2f;
 
+    // התנאים החדשים:
+    // 1. האם אני במצב רדיפה? (m_currentStateType == AIStateType::PURSUIT)
+    // 2. האם אני גבוה מהאויב? (selfPos.y > enemyPos.y)
+    bool isAttackingFromAbove = (m_currentStateType == AIStateType::PURSUIT) && (selfPos.y > enemyPos.y);
 
-    if (distToEnemy < MAX_LOCK_DIST && alignment > LOCK_CONE) {
-
+    if (distToEnemy < MAX_LOCK_DIST && alignment > LOCK_CONE && isAttackingFromAbove) {
         m_targetLock.lockProgress += LOCK_SPEED * deltaTime;
 
         if (m_targetLock.lockProgress >= 1.0f) {
@@ -241,13 +197,15 @@ void Plane::UpdateLockSystem(float deltaTime) {
             m_targetLock.isLocked = true;
         }
     } else {
-
+        // אם אחד התנאים הופסק (למשל האויב עלה מעליך או שברת לבריחה), הנעילה יורדת מהר
         m_targetLock.lockProgress -= deltaTime * 1.5f;
         if (m_targetLock.lockProgress <= 0.0f) {
             m_targetLock.lockProgress = 0.0f;
             m_targetLock.isLocked = false;
         }
     }
+
+    // אם הנעילה הושלמה (Progress = 1.0), הטיימר לסיום המשחק מתחיל לרדת
     if (m_targetLock.isLocked) {
         m_targetLock.lockTimer -= deltaTime;
     }
@@ -255,6 +213,8 @@ void Plane::UpdateLockSystem(float deltaTime) {
 
 
 void Plane::Draw() {
+
+
     Vector3 up = { 0, 1, 0 };
 
 

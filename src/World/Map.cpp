@@ -15,17 +15,18 @@ void Map::Load(const char* heightmapPath, Vector3 size, const char* texturePath)
 
     Mesh mesh = GenMeshHeightmap(m_heightmapImage, m_size);
     m_model = LoadModelFromMesh(mesh);
-    m_texture = LoadTexture(texturePath);
+    //m_texture = LoadTexture(texturePath);
     m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = m_texture;
 
-    m_shader = LoadShader("Assets/shaders/fog.vs", "Assets/shaders/fog.fs");
+   // m_shader = LoadShader("Assets/shaders/fog.vs", "Assets/shaders/fog.fs");
+    m_shader = LoadShader("", "");
 
-    // עדכון המיקומים (Locations)
+
     m_shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(m_shader, "matModel");
     m_fogDensityLoc = GetShaderLocation(m_shader, "fogDensity");
     int fogColorLoc = GetShaderLocation(m_shader, "fogColor");
 
-    // צבע ערפל שתואם לשמיים שלך (SKYBLUE)
+
     float fogColor[4] = { 0.4f, 0.75f, 1.0f, 1.0f };
     SetShaderValue(m_shader, fogColorLoc, fogColor, SHADER_UNIFORM_VEC4);
 
@@ -47,14 +48,11 @@ void Map::Load(const char* heightmapPath, Vector3 size, const char* texturePath)
 }
 
 void Map::UpdateFog(Vector3 cameraPos) {
-    if (!m_isLoaded) return;
     SetShaderValue(m_shader, m_shader.locs[SHADER_LOC_VECTOR_VIEW], &cameraPos, SHADER_UNIFORM_VEC3);
     SetShaderValue(m_shader, m_fogDensityLoc, &m_fogDensity, SHADER_UNIFORM_FLOAT);
 }
 
-// Map.cpp
 bool Map::IsBelowGround(Vector3 position) const {
-    if (!m_isLoaded) return false;
 
     // Use m_position as origin — matches exactly where DrawModel places the mesh
     float xRel = (position.x - m_position.x) / m_size.x;
@@ -96,8 +94,6 @@ Map::~Map() {
 }
 
 float Map::GetHeightAt(float x, float z) const {
-    if (!m_isLoaded) return 0.0f;
-
 
     float xRel = (x - m_position.x) / m_size.x;
     float zRel = (z - m_position.z) / m_size.z;

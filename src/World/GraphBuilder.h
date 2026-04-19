@@ -5,6 +5,7 @@
 #ifndef DOGFIGHT_GRAPHBUILDER_H
 #define DOGFIGHT_GRAPHBUILDER_H
 #include <functional>
+#include <stdint.h>
 #include <bits/basic_string.h>
 
 
@@ -36,12 +37,9 @@ class NavigationGraph {
 private:
     std::vector<Node> m_nodes;
     std::vector<std::vector<float>> distanceMatrix;
+    float m_spacing = 30.0f;
+    std::unordered_map<uint64_t, int> m_posToId;
 
-    int m_gridSizeX{}, m_gridSizeY{}, m_gridSizeZ{};
-
-
-
-    std::vector<Matrix> m_nodeTransforms;
     std::vector<Model> m_nodeModels;
     bool m_isModelReady = false;
 
@@ -49,10 +47,12 @@ private:
 
     static bool IsPathBlocked(Vector3 start, Vector3 end, const std::vector<Obstacle> &obstacles, const class Map *gameMap);
 
-    void BuildNodes(Vector3 arenaSize, float spacing, const Map &gameMap, int &idCounter, std::unordered_map<std::string, int> &posToId);
+    static float GetPathWeight(Vector3 start, Vector3 end, const std::vector<Obstacle> &obstacles, const Map *gameMap);
 
-    void BuildEdges(Vector3 arenaSize, float spacing, const Map &gameMap,
-                    const std::vector<Obstacle> &obstacles, std::unordered_map<std::string, int> &posToId);
+    void BuildNodes(Vector3 arenaSize, const Map &gameMap, int &idCounter);
+
+    void BuildEdges(const Map &gameMap,
+                    const std::vector<Obstacle> &obstacles);
 
 public:
     NavigationGraph() = default;

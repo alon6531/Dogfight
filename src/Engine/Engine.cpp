@@ -22,13 +22,13 @@ Engine::Engine() {
 
     InitWindow(WIN_WIDTH, WIN_HEIGHT, "Dogfight");
 
-    SetTargetFPS(240);
+    //SetTargetFPS(240);
 
 
 
 
 
-   ChangeState(WindowStateType::MENU);
+   ChangeState(WindowStateType::SIMULATION);
 }
 
 /**
@@ -56,43 +56,44 @@ void Engine::ProcessInput() {
  */
 void Engine::Update(float deltaTime) {
     deltaTime = fminf(deltaTime, 0.05f);
-    if (deltaTime > 0.05f) deltaTime = 0.05f;
+
 
     if (m_state) m_state->Update(deltaTime);
 }
 
 void Engine::ChangeState(WindowStateType newState) {
 
-    if (m_state && m_currentState == newState) return;
-    m_currentState = newState;
-    switch (newState) {
-        case WindowStateType::SIMULATION:
-            m_state = std::make_unique<SimsState>(*this);
-            break;
+    if (m_currentState != newState) {
 
-        case WindowStateType::MENU:
-            m_state = std::make_unique<MenuState>(*this);
-            break;
+        m_currentState = newState;
+        switch (newState) {
+            case WindowStateType::SIMULATION:
+                m_state = std::make_unique<SimsState>(*this);
+                break;
 
-        case WindowStateType::GAME_OVER:
-            m_state = std::make_unique<GameOverState>(*this);
-            break;
+            case WindowStateType::MENU:
+                m_state = std::make_unique<MenuState>(*this);
+                break;
 
-        default:
-            std::cout << "Error: Attempted to change to an unknown state!" << std::endl;
-            break;
+            case WindowStateType::GAME_OVER:
+                m_state = std::make_unique<GameOverState>(*this);
+                break;
+
+            default:
+                std::cout << "Error: Attempted to change to an unknown state!" << std::endl;
+                break;
+        }
     }
 }
 
 /**
  * Render every tick of the simulator
  */
-void Engine::Render() {
+void Engine::Render() const {
     BeginDrawing();
 
-    if (m_state) {
-        m_state->Draw();
-    }
+    if (m_state) m_state->Draw();
+
 
 
     DrawFPS(WIN_WIDTH - 100, 10);
@@ -106,7 +107,7 @@ void Engine::Run() {
 
     while (!m_shouldClose) {
 
-        float dt = GetFrameTime();
+        const float dt = GetFrameTime();
 
         ProcessInput();
 

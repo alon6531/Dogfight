@@ -85,24 +85,6 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
     int newTarget = m_graph.GetClosestNode(targetPos);
 
 
-    if (newStart == -1 || newTarget == -1) {
-
-        return { startPos, targetPos };
-    }
-
-    if (m_targetNodeIdx == -1) {
-        m_nodes.clear();
-        while(!m_openSet.empty()) m_openSet.pop();
-        m_kM = 0;
-        m_targetNodeIdx = newTarget;
-        m_startNodeIdx = newStart;
-
-        m_nodes[m_targetNodeIdx].rhs = 0;
-        m_nodes[m_targetNodeIdx].g = 1e9f;
-        UpdateVertex(m_targetNodeIdx);
-        ComputeShortestPath();
-    }
-
 
     if (newStart != m_startNodeIdx) {
 
@@ -136,14 +118,6 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
     std::vector<Vector3> path;
     int curr = m_startNodeIdx;
 
-
-    if (m_nodes.count(curr) == 0 || m_nodes[curr].g >= 1e6f) {
-        AStar shortestPath;
-        auto fallbackPath = shortestPath.FindPath(m_graph, m_startNodeIdx, m_targetNodeIdx);
-        if (!fallbackPath.empty()) return fallbackPath;
-    }
-
-
     std::unordered_set<int> visited;
     for (int step = 0; step < 80; step++) {
         if (curr < 0 || curr >= (int)m_graph.GetNodes().size()) break;
@@ -154,6 +128,7 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
 
         int nextNode = -1;
         float minCost = 1e9f;
+        float bestEdgeWeight = 0.0f;
 
         for (auto& edge : m_graph.GetNodes()[curr].neighbors) {
             if (visited.count(edge.target)) continue;
@@ -164,19 +139,15 @@ std::vector<Vector3> DStarLite::PlanPath(Vector3 startPos, Vector3 targetPos) {
             if (edgeCost < minCost) {
                 minCost = edgeCost;
                 nextNode = edge.target;
+                bestEdgeWeight = edge.weight;
             }
         }
 
         if (nextNode == -1 || nextNode == curr) break;
+        m_lastPathWeight += bestEdgeWeight;
         curr = nextNode;
     }
 
-
-    if (path.size() < 2) {
-        path.clear();
-        path.push_back(startPos);
-        path.push_back(targetPos);
-    }
 
     return path;
 }
