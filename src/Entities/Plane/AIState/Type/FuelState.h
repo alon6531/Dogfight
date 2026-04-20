@@ -8,12 +8,11 @@
 
 
 class FuelState : public AIState{
+private:
 public:
-    FuelState(Plane &self, NavigationGraph &navGraph)
-        : AIState(self, navGraph) {
-    }
+    FuelState(Plane &self, NavigationGraph &navGraph);
 
-    ~FuelState() override;
+    ~FuelState() override = default;
 
     AIStateType Update(float deltaTime) override;
 

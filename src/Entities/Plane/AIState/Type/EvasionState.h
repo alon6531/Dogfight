@@ -5,7 +5,7 @@
 #ifndef DOGFIGHT_EVASIONSTATE_H
 #define DOGFIGHT_EVASIONSTATE_H
 
-#define MAX_THRUST_EVASION 270.0f
+#define MAX_THRUST_EVASION 470.0f
 
 #include "../Base/AIState.h"
 
@@ -19,6 +19,7 @@ public:
     ~EvasionState() override;
 
     AIStateType Update(float deltaTime) override;
+
     Vector3 GetCurrentTargetFromAI() override;
     void DrawDebugUI() override;
 
@@ -30,19 +31,30 @@ private:
     float    m_pathTimer     = 999.0f;   // force first replan immediately
     int      m_escapeNodeIdx = -1;
 
-    float m_replanInterval = 0.25f;
-    float m_waypointRadiusSq = 10000.0f;
-    float m_safeDistSq = 160000.0f;
-    float m_highGroundAdvantage = 80.0f;
-    float m_minEscapeDist = 300.0f;
-    float m_altitudeWeight = 2.5f;
-    float m_distanceWeight = 1.0f;
-    int   m_candidateSamples = 80;
-    float m_maxPathCost = 5000.0f;
-    float m_escapeNodeReachedSq = 40000.0f;
+    float m_replanInterval = 0.1f;
+    float m_waypointRadiusSq = 5000.0f;
+    float m_safeDistSq = 490000.0f;
+    float m_highGroundAdvantage = 150.0f;
+    float m_minEscapeDist = 600.0f;
+    float m_altitudeWeight = 8.5f;
+    float m_distanceWeight = 1.2f;
+    int m_candidateSamples = 150;
+    float m_maxPathCost = 8000.0f;
+    float m_escapeNodeReachedSq = 15000.0f;
+    int m_maxEvasionNodes = 3;
+
+    float m_stateTime = 0.0f;
+
 
     // Finds a scored escape node: penalises low altitude and proximity to enemy
     int PickEscapeNode(Vector3 selfPos, Vector3 enemyPos) const;
+    bool ShouldReturnToPursuit(Vector3 selfPos, Vector3 enemyPos) const;
+    void ResetState();
+    void UpdateEscapeTarget(Vector3 selfPos, Vector3 enemyPos);
+    void ReplanPathIfNeeded(Vector3 selfPos);
+    void NavigatePath(Vector3 selfPos, float deltaTime, Vector3 enemyPos);
+    void ExecuteEmergencyClimb(Vector3 selfPos, Vector3 enemyPos, float deltaTime);
+
 };
 
 

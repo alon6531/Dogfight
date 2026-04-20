@@ -26,12 +26,13 @@ Engine::Engine() {
     InitWindow(WIN_WIDTH, WIN_HEIGHT, "Dogfight");
 
     //SetTargetFPS(240);
-
+    InitAudioDevice();
+    SetAudioStreamBufferSizeDefault(4096);
 
     rlImGuiSetup(true);
 
 
-    ChangeState(WindowStateType::SIMULATION);
+    ChangeState(WindowStateType::MENU);
 }
 
 /**
@@ -48,7 +49,15 @@ void Engine::ProcessInput() {
     if (WindowShouldClose()) m_shouldClose = true;
 
     if (IsKeyPressed(KEY_TAB)) {
-        m_gameContext.m_showDebugUI = ! m_gameContext.m_showDebugUI;
+        m_gameContext.m_showDebugUI = !m_gameContext.m_showDebugUI;
+
+
+
+        if (m_gameContext.m_showDebugUI) {
+            EnableCursor();
+        } else {
+            DisableCursor();
+        }
     }
 }
 
@@ -94,8 +103,6 @@ void Engine::Render() const {
     BeginDrawing();
 
     if (m_state) m_state->Draw();
-
-
 
 
     DrawFPS(WIN_WIDTH - 100, 10);

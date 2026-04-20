@@ -43,7 +43,7 @@ float NavigationGraph::GetPathWeight(Vector3 start, Vector3 end, const std::vect
         if (gameMap != nullptr && gameMap->IsBelowGround(checkPoint)) return -1.0f;
 
         if (IsPointBlocked(checkPoint, obstacles)) {
-            weightMultiplier = FLT_MAX;
+            weightMultiplier = 100;
         }
     }
     return distance * weightMultiplier;
@@ -129,6 +129,7 @@ void NavigationGraph::BuildEdges(const Map& gameMap, const std::vector<Obstacle>
 
 void NavigationGraph::BuildGraphFromMap(Vector3 arenaSize, float spacing, const std::vector<Obstacle> &obstacles, const Map& gameMap) {
     m_spacing = spacing;
+    m_arenaSize = arenaSize;
 
     m_nodes.clear();
     int idCounter = 0;
@@ -202,34 +203,7 @@ int NavigationGraph::GetClosestNode(Vector3 position) {
     return (closestIdx != -1) ? closestIdx : 0;
 }
 
-int NavigationGraph::GetRandomNodeFarFrom(Vector3 position, float minDistance) const {
-    const auto& nodes = GetNodes();
 
-    int totalNodes = (int)nodes.size();
-
-    for (int i = 0; i < 100; i++) {
-        int randomIndex = GetRandomValue(0, totalNodes - 1);
-        float dist = Vector3Distance(nodes[randomIndex].position, position);
-
-        if (dist >= minDistance) {
-            return randomIndex;
-        }
-    }
-
-    int bestIndex = -1;
-    float maxDistFound = -1.0f;
-
-    for (int i = 0; i < 200; i++) {
-        int idx = GetRandomValue(0, totalNodes - 1);
-        float dist = Vector3Distance(nodes[idx].position, position);
-        if (dist > maxDistFound) {
-            maxDistFound = dist;
-            bestIndex = idx;
-        }
-    }
-
-    return bestIndex;
-}
 
 
 void NavigationGraph::PrepareGPUData() {
@@ -307,9 +281,34 @@ void NavigationGraph::Draw(Vector3 cameraPos, float renderRadius) const {
             // FRUSTUM/DISTANCE CULLING: Skip drawing edges for distant nodes
             if (Vector3DistanceSqr(m_nodes[i].position, cameraPos) > radiusSq) continue;
 
-            for (const auto &edge: m_nodes[i].neighbors) {
-                // Avoid drawing the same edge twice (check target > i)
-                if (edge.target > (int) i) {
+            for (const auto &edge : m_nodes[i].neighbors) {
+                if (edge.target > (int)i) {
+                    // 1. נרמול בסיסי - כמה הקשת הזו "חריגה" מהסטנדרט
+                    float relativeWeight = edge.weight / m_spacing;
+
+                    // 2. יצירת ה-Hue (הגוון)
+                    // אנחנו מכפילים במספר גבוה כדי שכל שינוי קטן במיקום או במשקל
+                    // יזיז את הצבע למקום אחר על הקשת.
+                    // ה-fmod מבטיח שנשאר בתוך גלגל הצבעים (0-360)
+                    float hue = fmodf(relativeWeight * 150.0f, 360.0f);
+
+                    // 3. הוספת "בונוס" צבעוני לפי המיקום במרחב (אופציונלי למראה פסיכדלי)
+                    // זה גורם לאזורים שונים בגרף לקבל גוון בסיס שונה
+                    float spatialVariation = (m_nodes[i].position.x + m_nodes[i].position.z) * 0.1f;
+                    hue = fmodf(hue + spatialVariation, 360.0f);
+
+                    // 4. יצירת הצבע
+                    // Saturation (רוויה) גבוהה (0.9) נותנת צבעים חזקים
+                    Color color = ColorFromHSV(hue, 0.9f, 0.9f);
+
+                    // 5. טיפול במכשולים - אם זה ממש חסום, נכריח את זה להיות אדום כהה או שקוף
+                    if (relativeWeight > 10.0f) {
+                        color = { 255, 0, 0, 50 }; // אדום שקוף למכשולים
+                    } else {
+                        color.a = 180; // שקיפות מגניבה לקשתות רגילות
+                    }
+
+                    rlColor4ub(color.r, color.g, color.b, color.a);
                     rlVertex3f(m_nodes[i].position.x, m_nodes[i].position.y, m_nodes[i].position.z);
                     rlVertex3f(m_nodes[edge.target].position.x, m_nodes[edge.target].position.y,
                                m_nodes[edge.target].position.z);

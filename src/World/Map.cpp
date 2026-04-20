@@ -15,11 +15,11 @@ void Map::Load(const char* heightmapPath, Vector3 size, const char* texturePath)
 
     Mesh mesh = GenMeshHeightmap(m_heightmapImage, m_size);
     m_model = LoadModelFromMesh(mesh);
-    //m_texture = LoadTexture(texturePath);
+    m_texture = LoadTexture(texturePath);
     m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = m_texture;
 
-   // m_shader = LoadShader("Assets/shaders/fog.vs", "Assets/shaders/fog.fs");
-    m_shader = LoadShader("", "");
+    m_shader = LoadShader("Assets/shaders/fog.vs", "Assets/shaders/fog.fs");
+    //m_shader = LoadShader("", "");
 
 
     m_shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(m_shader, "matModel");

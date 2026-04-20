@@ -16,7 +16,7 @@
 #define SLOPE_EFFECT 120.0f
 #define DRAG_COEFF 0.02f
 
-#define MAX_FUEL 30000.0f
+#define MAX_FUEL 10000.0f
 #define ESCAPE_FUEL (MAX_FUEL * 0.3)
 
 
@@ -87,8 +87,8 @@ public:
         return m_currentStateType;
     }
 
-    void SetThrust(float m_thrust) {
-        this->m_thrust = m_thrust;
+    void SetThrust(float thrust) {
+        this->m_thrust = thrust;
     }
 
     [[nodiscard]] float GetFuel() const {
@@ -102,6 +102,14 @@ public:
 
     const TargetLock& GetTargetLock() const {return m_targetLock;};
 
+    [[nodiscard]] Vector3 GetLiftPoint() const {
+        return m_liftPoint;
+    }
+
+    void SetLiftPoint(const Vector3 &lift_point) {
+        m_liftPoint = lift_point;
+    }
+
 private:
     Mesh m_mesh{};
     Model m_model{};
@@ -113,6 +121,7 @@ private:
 
     Vector3 m_basePos = {};
     Vector3 m_targetPos = {};
+    Vector3 m_liftPoint = {};
 
     float m_rotation = 0.0f;
     float m_thrust = 0.0f;

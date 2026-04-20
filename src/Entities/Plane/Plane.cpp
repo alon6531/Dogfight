@@ -17,15 +17,15 @@ Plane::Plane(const Vector3 &position, const Vector3 &velocity, const Color &colo
     : m_position(position), m_velocity(velocity), m_targetPos(targetPos), m_basePos(position)
 {
     m_forward = { 1, 0, 0 };
-    m_mesh = GenMeshCube(200, 20, 50);
-    m_model = LoadModelFromMesh(m_mesh);
-    m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].color = color;
-    // m_model = LoadModel("Assets/plane.glb");
-    //
-    // for (int i = 0; i < m_model.materialCount; i++) {
-    //     auto &mat = m_model.materials[i];
-    //     mat.maps[MATERIAL_MAP_ALBEDO].color = color;
-    // }
+    // m_mesh = GenMeshCube(200, 20, 50);
+    // m_model = LoadModelFromMesh(m_mesh);
+    // m_model.materials[0].maps[MATERIAL_MAP_ALBEDO].color = color;
+    m_model = LoadModel("Assets/plane.glb");
+
+    for (int i = 0; i < m_model.materialCount; i++) {
+        auto &mat = m_model.materials[i];
+        mat.maps[MATERIAL_MAP_ALBEDO].color = color;
+    }
 
     m_fuel = MAX_FUEL;
 
@@ -40,6 +40,8 @@ Plane::~Plane() {
 }
 
 void Plane::Update(float deltaTime, NavigationGraph& graph, const Map& map, const std::vector<Obstacle>& obstacles) {
+    UpdateLockSystem(deltaTime);
+    UpdatePhysics(deltaTime, map, obstacles);
 
     if (m_fsm) {
         AIStateType nextState = m_fsm->Update(deltaTime);
@@ -50,14 +52,16 @@ void Plane::Update(float deltaTime, NavigationGraph& graph, const Map& map, cons
     }
 
 
-    if (m_fuel <= ESCAPE_FUEL && m_fuel >= ESCAPE_FUEL - 30.0f) {
-        m_targetPos = m_basePos;
+    if (m_currentStateType != AIStateType::FUEL && (m_fuel <= ESCAPE_FUEL && m_fuel >= ESCAPE_FUEL - 30.0f)) {
+
+
+        m_targetPos = m_liftPoint;
         ChangeAIState(AIStateType::PATROL, graph);
+
+        std::cout << "Low Fuel! Returning to Lift-Off Point for approach." << std::endl;
     }
 
-    // 3. עדכון מערכות
-    UpdateLockSystem(deltaTime);
-    UpdatePhysics(deltaTime, map, obstacles);
+
 }
 
 void Plane::ChangeAIState(AIStateType newState, NavigationGraph& graph) {
@@ -172,44 +176,51 @@ void Plane::UpdateLockSystem(float deltaTime) {
         return;
     }
 
-    // ניצחון סופי אם הטיימר נגמר
-    if (m_targetLock.lockTimer <= 0)
-        m_targetLock.finalLock = true;
+    if (m_targetLock.lockTimer <= 0) m_targetLock.finalLock = true;
 
     Vector3 selfPos = m_position;
     Vector3 enemyPos = m_enemy->GetPosition();
+    Vector3 enemyVel = m_enemy->GetVelocity();
 
-    // חישוב כיוון ומרחק (אופטימיזציה: מרחק בריבוע לביצועים אם תרצה, אבל נשאר עקבי עם הקוד שלך)
-    Vector3 dirToEnemy = Vector3Normalize(Vector3Subtract(enemyPos, selfPos));
-    float alignment = Vector3DotProduct(m_forward, dirToEnemy);
+
     float distToEnemy = Vector3Distance(selfPos, enemyPos);
+    float predictionTime = distToEnemy * 0.002f;
+    Vector3 predictedPos = Vector3Add(enemyPos, Vector3Scale(enemyVel, predictionTime));
 
-    const float MAX_LOCK_DIST = 600.0f;
-    const float LOCK_CONE = 0.97f;
-    const float LOCK_SPEED = 0.2f;
 
-    // התנאים החדשים:
-    // 1. האם אני במצב רדיפה? (m_currentStateType == AIStateType::PURSUIT)
-    // 2. האם אני גבוה מהאויב? (selfPos.y > enemyPos.y)
-    bool isAttackingFromAbove = (m_currentStateType == AIStateType::PURSUIT) && (selfPos.y > enemyPos.y);
+    Vector3 dirToTarget = Vector3Normalize(Vector3Subtract(predictedPos, selfPos));
+    float alignment = Vector3DotProduct(m_forward, dirToTarget);
 
-    if (distToEnemy < MAX_LOCK_DIST && alignment > LOCK_CONE && isAttackingFromAbove) {
+
+    const float MAX_LOCK_DIST = 800.0f;
+    const float LOCK_CONE = 0.98f;
+    const float LOCK_SPEED = 0.25f;
+    const float HEIGHT_ADVANTAGE_THRESHOLD = 30.0f;
+
+
+    bool isHighEnough = (selfPos.y > enemyPos.y + HEIGHT_ADVANTAGE_THRESHOLD);
+
+
+    bool canLock = (distToEnemy < MAX_LOCK_DIST) &&
+                   (alignment > LOCK_CONE) &&
+                   isHighEnough &&
+                   (m_currentStateType == AIStateType::PURSUIT);
+
+    if (canLock) {
         m_targetLock.lockProgress += LOCK_SPEED * deltaTime;
-
         if (m_targetLock.lockProgress >= 1.0f) {
             m_targetLock.lockProgress = 1.0f;
             m_targetLock.isLocked = true;
         }
     } else {
-        // אם אחד התנאים הופסק (למשל האויב עלה מעליך או שברת לבריחה), הנעילה יורדת מהר
-        m_targetLock.lockProgress -= deltaTime * 1.5f;
+
+        m_targetLock.lockProgress -= deltaTime * 0.8f;
         if (m_targetLock.lockProgress <= 0.0f) {
             m_targetLock.lockProgress = 0.0f;
             m_targetLock.isLocked = false;
         }
     }
 
-    // אם הנעילה הושלמה (Progress = 1.0), הטיימר לסיום המשחק מתחיל לרדת
     if (m_targetLock.isLocked) {
         m_targetLock.lockTimer -= deltaTime;
     }
@@ -303,36 +314,53 @@ void Plane::DrawPath() const {
 
 
 void Plane::DrawLocked(Camera3D camera) const {
-    if (m_enemy) {
+    if (!m_enemy) return;
 
-        Vector2 screenPos = GetWorldToScreen(m_enemy->GetPosition(), camera);
+    Vector3 selfPos = m_position;
+    Vector3 enemyPos = m_enemy->GetPosition();
 
+    // 1. בדיקה אם האויב לפנינו (Dot Product)
+    Vector3 dirToEnemy = Vector3Normalize(Vector3Subtract(enemyPos, selfPos));
+    float alignment = Vector3DotProduct(m_forward, dirToEnemy);
 
-        if (screenPos.x > 0 && screenPos.y > 0) {
+    if (alignment < 0) return;
 
+    // 2. המרה למסך
+    Vector2 screenPos = GetWorldToScreen(enemyPos, camera);
 
-            Color lockColor = m_targetLock.isLocked ? RED : Fade(LIME, 0.5f);
-            float boxSize = m_targetLock.isLocked ? 40.0f : 60.0f; // הריבוע מתכווץ כשננעל
+    if (screenPos.x > 0 && screenPos.x < GetScreenWidth() &&
+        screenPos.y > 0 && screenPos.y < GetScreenHeight())
+    {
+        bool lowHeight = selfPos.y < enemyPos.y + 30.0f;
+        Color lockColor = m_targetLock.isLocked ? RED : LIME;
 
+        if (lowHeight && !m_targetLock.isLocked) lockColor = ORANGE;
 
-            DrawRectangleLinesEx(Rectangle{
-                screenPos.x - boxSize/2,
-                screenPos.y - boxSize/2,
-                boxSize,
-                boxSize
-            }, 2, lockColor);
+        float boxSize = m_targetLock.isLocked ? 40.0f : 60.0f;
 
+        // ציור הריבוע
+        DrawRectangleLinesEx(Rectangle{ screenPos.x - boxSize/2, screenPos.y - boxSize/2, boxSize, boxSize }, 2, lockColor);
 
-            if (m_targetLock.isLocked) {
-                float dist = Vector3Distance(m_position, m_enemy->GetPosition());
-                DrawText("LOCK", screenPos.x - 15, screenPos.y - (boxSize/2 + 15), 10, RED);
-                DrawText(TextFormat("%.0fm", dist), screenPos.x - 15, screenPos.y + (boxSize/2 + 5), 10, RED);
-            }
+        // --- הוספת כיתוב LOCK ---
+        if (m_targetLock.isLocked) {
+            // כיתוב LOCK מעל הריבוע
+            int fontSize = 20;
+            int textWidth = MeasureText("LOCK", fontSize);
+            DrawText("LOCK", screenPos.x - textWidth / 2, screenPos.y - boxSize / 2 - 25, fontSize, RED);
 
+            // בונוס: הוספת מרחק מתחת לריבוע
+            float dist = Vector3Distance(selfPos, enemyPos);
+            DrawText(TextFormat("%.0fm", dist), screenPos.x - 20, screenPos.y + boxSize / 2 + 5, 15, RED);
+        }
 
-            if (!m_targetLock.isLocked && m_targetLock.lockProgress > 0) {
-                DrawRectangle(screenPos.x - 30, screenPos.y + 35, 60 * m_targetLock.lockProgress, 4, LIME);
-            }
+        // חיווי על גובה
+        if (lowHeight && !m_targetLock.isLocked) {
+            DrawText("GAIN ALTITUDE", screenPos.x - 45, screenPos.y + (boxSize / 2 + 15), 10, ORANGE);
+        }
+
+        // מד התקדמות הנעילה
+        if (!m_targetLock.isLocked && m_targetLock.lockProgress > 0) {
+            DrawRectangle(screenPos.x - 30, screenPos.y + 35, 60 * m_targetLock.lockProgress, 4, LIME);
         }
     }
 }
@@ -449,11 +477,8 @@ void Plane::DrawHub(bool showDebug) const {
 
 
     if (showDebug) {
-        rlImGuiBegin();
-
         if (m_fsm) m_fsm->DrawDebugUI();
 
-        rlImGuiEnd();
     }
 
 }

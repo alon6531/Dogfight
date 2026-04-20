@@ -37,6 +37,7 @@ class NavigationGraph {
 private:
     std::vector<Node> m_nodes;
     std::vector<std::vector<float>> distanceMatrix;
+    Vector3 m_arenaSize;
     float m_spacing = 30.0f;
     std::unordered_map<uint64_t, int> m_posToId;
 
@@ -72,7 +73,7 @@ public:
 
     int GetClosestNode(Vector3 position);
 
-    int GetRandomNodeFarFrom(Vector3 position, float minDistance) const;
+    int GetRandomNodeFarFrom(Vector3 position, Vector3 currentForward, float minDistance);
 
 
     void PrepareGPUData();
@@ -88,8 +89,9 @@ public:
         return distanceMatrix;
     }
 
-
-
+    [[nodiscard]] Vector3 GetArenaSize() const {
+        return m_arenaSize;
+    }
 };
 
 

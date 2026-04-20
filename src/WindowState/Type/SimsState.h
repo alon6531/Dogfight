@@ -12,14 +12,36 @@
 #include "../../Entities/Plane/Plane.h"
 #include "../../World/Map.h"
 #include <random>
-
 #include "../Base/State.h"
+extern "C" {
+#include "../../External/pl_mpeg.h"
+}
 
+
+
+enum class LoadingStep {
+    START,
+    VIDEO_INTRO,
+    LOADING_ASSETS,
+    BUILDING_GRAPH,
+    READY
+};
 
 class Plane;
 
 class SimsState : public State {
 private:
+    plm_t *m_plm = nullptr;
+    Texture2D m_videoFrame = { 0 };
+    unsigned char *m_videoRgbBuffer = nullptr;
+    int m_videoWidth = 0;
+    int m_videoHeight = 0;
+    AudioStream m_audioStream;
+    std::vector<float> m_audioQueue;
+
+    LoadingStep m_loadingStatus = LoadingStep::START;
+    float m_loadingPercentage = 0.0f;
+
     Camera3D m_camera{};
     NavigationGraph m_navGraph;
     std::shared_ptr<Plane> m_plane;
@@ -37,16 +59,26 @@ private:
 
     float m_timeMultiplier = 1.0f;
 
+    friend void OnVideoFrame(plm_t *player, plm_frame_t *frame, void *user);
+    friend void OnAudioFrame(plm_t *player, plm_samples_t *samples, void *user) ;
+
 public:
     explicit SimsState(Engine& engine);
+    ~SimsState();
+
+    void InitializeObjects();
 
     bool EndSimsCheck();
 
     void CameraHandle(float deltaTime);
 
+
+
+    void UpdateLoading();
+
     void Update(float deltaTime) override;
 
-    void InitializeSystem();
+
 
     void Draw() override;
 };

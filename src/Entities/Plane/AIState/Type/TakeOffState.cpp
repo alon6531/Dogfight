@@ -15,7 +15,7 @@ TakeOffState::TakeOffState(Plane &self, NavigationGraph &navGraph)
     float minTakeoffDist = (requiredSpeed * requiredSpeed) / (2.0f * acceleration);
 
     Vector3 currentPos = p_self.GetPosition();
-    Vector3 forward = p_self.GetForward();
+    Vector3 forward = {1, 0, 0};
 
 
     Vector3 stayOnGround = Vector3Add(currentPos, Vector3Scale(forward, 40.0f));
@@ -45,7 +45,10 @@ AIStateType TakeOffState::Update(float deltaTime) {
     if (distance < 20.0f) {
 
         p_path.pop_front();
-        if (p_path.empty()) return AIStateType::PATROL;
+        if (p_path.empty()) {
+            p_self.SetLiftPoint(p_self.GetPosition());
+            return AIStateType::PATROL;
+        }
 
         targetPoint = p_path.front();
     }
