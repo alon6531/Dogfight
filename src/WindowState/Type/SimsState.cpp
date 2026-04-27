@@ -57,6 +57,23 @@ void SimsState::InitializeObjects() {
     // הגדרת מצלמה התחלתית מעל המטוס
     m_camera.position = {m_starPoint.x - 30, m_starPoint.y + 20, m_starPoint.z - 30};
     m_camera.target = m_starPoint;
+
+    m_obstacleSphereModel = LoadModelFromMesh(GenMeshSphere(1.0f, 16, 16));
+    m_obstacleWiresModel = LoadModelFromMesh(GenMeshSphere(1.0f, 16, 16));
+    m_obstacleSphereModel.materials[0].maps[MATERIAL_MAP_ALBEDO].color = ColorAlpha(RED, 0.3f);
+    m_obstacleWiresModel.materials[0].maps[MATERIAL_MAP_ALBEDO].color = ColorAlpha(BLACK, 0.5f);
+    m_obstacleModelsLoaded = true;
+    m_obstacles.clear();
+
+
+    std::uniform_real_distribution<float> midArea(-300.0f, 300.0f);
+
+    for (int i = 0; i < 15; i++) {
+        float x = midArea(gen);
+        float z = midArea(gen);
+        float y = m_map.GetHeightAt(x, z);
+        m_obstacles.push_back({(Vector3){x, y, z}, 160.0f});
+    }
 }
 
 bool SimsState::EndSimsCheck() {

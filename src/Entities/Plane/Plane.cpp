@@ -370,7 +370,7 @@ void Plane::DrawHub(bool showDebug) const {
 
 
     int panelX = 15, panelY = 15;
-    int panelWidth = 280, panelHeight = 375;
+    int panelWidth = 280, panelHeight = 400;
 
     auto DrawTextWithShadow = [](const char* text, int posX, int posY, int size, Color col) {
         DrawText(text, posX + 2, posY + 2, size, BLACK);
@@ -437,6 +437,8 @@ void Plane::DrawHub(bool showDebug) const {
     DrawStat("LIFT   [L]:", m_lift, SKYBLUE);
     DrawStat("GRAVITY[G]:", m_gravity, WHITE);
     DrawStat("NET Y  [N]:", m_normal, MAGENTA);
+    DrawStat("Ammo: ", m_emmoCount, YELLOW);
+
 
     y += 15;
     float speed = Vector3Length(m_velocity);
@@ -471,6 +473,7 @@ void Plane::DrawHub(bool showDebug) const {
 
     DrawRectangleLines(x, y, 240, 15, Fade(WHITE, 0.3f));
 
+
     if (fuelPerc <= 0.0f) {
         DrawTextWithShadow("ENGINE STALL - NO FUEL", x + 40, y + 20, 14, RED);
     }
@@ -480,5 +483,6 @@ void Plane::DrawHub(bool showDebug) const {
         if (m_fsm) m_fsm->DrawDebugUI();
 
     }
+
 
 }

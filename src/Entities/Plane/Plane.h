@@ -16,7 +16,7 @@
 #define SLOPE_EFFECT 120.0f
 #define DRAG_COEFF 0.02f
 
-#define MAX_FUEL 10000.0f
+#define MAX_FUEL 50000.0f
 #define ESCAPE_FUEL (MAX_FUEL * 0.3)
 
 
@@ -132,6 +132,7 @@ private:
     Vector3 m_forward = {};
     float m_bankAngle = 0.0f;
     float m_fuel = 0.0f;
+    int m_emmoCount = 1.0f;
 
 
     std::unique_ptr<AIState> m_fsm = nullptr;
