@@ -1,81 +1,70 @@
 #include "MPCController.h"
 #include "raymath.h"
 #include "../../../World/GraphBuilder.h"
-#include "../../../Collision/GJK.h" // וודא שהקלאס החדש זמין
-#include "../../Plane/Plane.h" // לצורך הגישה לנתוני האויב
+#include "../../../Collision/GJK.h"
+#include "../../Plane/Plane.h"
 
 Vector3 MPCController::CalculateBestSteer(Vector3 pos, Vector3 vel, Vector3 forward, Vector3 target,
                                           const std::vector<Obstacle>& obstacles, const std::shared_ptr<Plane> &enemy) {
+
+    const int NUM_SAMPLES = 15; // Number of hypothetical paths to check
     Vector3 bestSteer = forward;
-    float minCost = __FLT_MAX__;
+    float minCost = std::numeric_limits<float>::max();
 
-    const int steps = 20;
-    const float stepDt = 0.2f;
-    float speed = Vector3Length(vel);
+    // Sample different directions (up, right, etc.)
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        // Create a reactive jitter vector (controlled random deviation from current forward)
+        Vector3 jitter = {
+            (float)GetRandomValue(-100, 100) / 100.0f,
+            (float)GetRandomValue(-100, 100) / 100.0f,
+            (float)GetRandomValue(-100, 100) / 100.0f
+        };
 
-    for (float yaw = -1.0f; yaw <= 1.0f; yaw += 0.4f) {
-        for (float pitch = -0.5f; pitch <= 0.5f; pitch += 0.5f) {
+        // Hypothetical direction: blending current forward with slight jitter
+        Vector3 candidateDir = Vector3Normalize(Vector3Add(forward, Vector3Scale(jitter, 0.5f)));
 
-            Vector3 simPos = pos;
-            Vector3 simForward = forward;
+        // Calculate the "cost" for this specific path
+        float currentCost = SimulateAndGetCost(pos, vel, candidateDir, target, obstacles, enemy);
 
-            Vector3 candidateTargetDir = Vector3RotateByAxisAngle(forward, {0, 1, 0}, yaw * 0.8f);
-            candidateTargetDir = Vector3RotateByAxisAngle(candidateTargetDir, Vector3CrossProduct(forward, {0, 1, 0}), pitch * 0.4f);
-
-            bool collided = false;
-
-            for (int i = 0; i < steps; ++i) {
-                simForward = Vector3Normalize(Vector3Lerp(simForward, candidateTargetDir, 2.0f * stepDt));
-                simPos = Vector3Add(simPos, Vector3Scale(simForward, speed * stepDt));
-
-                // 1. בדיקת התנגשות מול האויב (GJK) - ללא לופ!
-                if (enemy) {
-                    float distToEnemy = Vector3Distance(simPos, enemy->GetPosition());
-                    // Broad Phase: בדיקת רדיוס גסה לחיסכון בביצועים
-                    if (distToEnemy < 250.0f) {
-                        // Narrow Phase: GJK מדויק במיקום החזוי
-                        if (GJK::CheckCollisionAt(simPos, simForward, *enemy)) {
-                            collided = true;
-                            break;
-                        }
-                    }
-                }
-
-                // 2. בדיקת מכשולים סטטיים (הרים/מבנים)
-                for (const auto& obs : obstacles) {
-                    if (Vector3Distance(simPos, obs.pos) < obs.radius + 60.0f) {
-                        collided = true;
-                        break;
-                    }
-                }
-                if (collided) break;
-            }
-
-            float cost = CalculateCost(simPos, simForward, target, collided);
-
-            // קנס על שינוי היגוי למניעת רעידות
-            float steeringChange = 1.0f - Vector3DotProduct(candidateTargetDir, forward);
-            cost += steeringChange * 150.0f;
-
-            if (cost < minCost) {
-                minCost = cost;
-                bestSteer = candidateTargetDir;
-            }
+        // Keep the direction that results in the lowest cost
+        if (currentCost < minCost) {
+            minCost = currentCost;
+            bestSteer = candidateDir;
         }
     }
+
     return bestSteer;
 }
 
-float MPCController::CalculateCost(Vector3 finalPos, Vector3 finalForward, Vector3 target, bool collided) {
-    if (collided) return 5000000.0f; // עלות גבוהה מאוד להתנגשות
+float MPCController::SimulateAndGetCost(Vector3 pos, Vector3 vel, Vector3 steerDir, Vector3 target,
+                                        const std::vector<Obstacle>& obstacles, const std::shared_ptr<Plane>& enemy) const {
+    float totalCost = 0.0f;
+    Vector3 currentPos = pos;
+    float speed = Vector3Length(vel);
 
-    float distToTarget = Vector3Distance(finalPos, target);
+    // Predict future positions over the horizon
+    for (int i = 1; i <= m_horizon; i++) {
+        // 1. Predict future position at step 'i'
+        currentPos = Vector3Add(currentPos, Vector3Scale(steerDir, speed * m_predictionDt));
 
-    Vector3 dirToTarget = Vector3Normalize(Vector3Subtract(target, finalPos));
-    float alignment = 1.0f - Vector3DotProduct(finalForward, dirToTarget);
+        // 2. Distance Penalty: We want to be as close to the target as possible at the end of the horizon
+        if (i == m_horizon) {
+            totalCost += Vector3Distance(currentPos, target) * 1.0f;
+        }
 
-    // קנס גובה (מניעת התרסקות בקרקע)
-    float altitudePenalty = (finalPos.y < 120.0f) ? (120.0f - finalPos.y) * 20.0f : 0.0f;
+        // 3. Collision Check: Use GJK to see if we hit the enemy at this future position
+        if (enemy) {
+            if (GJK::CheckCollisionAt(currentPos, steerDir, *enemy)) {
+                totalCost += 10000.0f; // Massive penalty for crashing
+                // Optimization: We could 'break' here since the path is already invalid
+            }
+        }
 
-    return distToTarget + (alignment * 900.0f) + altitudePenalty;
+        // 4. Ground Avoidance: Penalty for being too low
+        if (currentPos.y < 20.0f) {
+            totalCost += 500.0f;
+        }
+    }
+
+    return totalCost;
 }

@@ -7,7 +7,6 @@ Dijkstra::Dijkstra(int maxNodesHint) {
 }
 
 void Dijkstra::PrepareStructures(int nodesCount) {
-    // ניקוי התור
     while (!m_pq.empty()) m_pq.pop();
 }
 

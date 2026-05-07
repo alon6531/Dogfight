@@ -5,6 +5,8 @@
 #include "raymath.h"
 #include <vector>
 
+class Plane;
+
 class GJK {
 public:
     struct Simplex {
@@ -20,21 +22,21 @@ public:
         }
     };
 
-    // הפונקציה הראשית לבדיקת התנגשות
-    static bool CheckCollision(const class Plane& a, const class Plane& b);
 
-    static bool CheckCollisionAt(Vector3 simPos, Vector3 simForward, const Plane &other);
+    static bool CheckCollision(const Plane& a, const Plane& b);
+
+
+    static bool CheckCollisionAt(Vector3 simPos, Vector3 simForward, const Plane& other);
+
 private:
-    static Vector3 Support(const class Plane& a, const class Plane& b, Vector3 direction);
-    static Vector3 GetFarthestPointInDirection(const class Plane& p, Vector3 direction);
+
+    static Vector3 Support(Vector3 posA, Vector3 forwardA, const Plane& b, Vector3 direction);
+    static Vector3 GetFarthestPointInDirection(Vector3 pos, Vector3 forward, Vector3 direction);
+
     static bool NextSimplex(Simplex& simplex, Vector3& direction);
-    
-    // פונקציות עזר גיאומטריות
     static bool Line(Simplex& simplex, Vector3& direction);
     static bool Triangle(Simplex& simplex, Vector3& direction);
     static bool Tetrahedron(Simplex& simplex, Vector3& direction);
-
-
 };
 
 #endif

@@ -36,6 +36,8 @@ set(IMGUI_SOURCES
         "${IMGUI_DIR}/imgui_tables.cpp"
         "${IMGUI_DIR}/imgui_demo.cpp"
         "${IMGUI_DIR}/rlImGui.cpp"
+        src/External/VideoPlayer/VideoPlayer.cpp
+        src/External/VideoPlayer/VideoPlayer.h
 )
 
 add_executable(Dogfight

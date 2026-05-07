@@ -21,7 +21,6 @@ PursuitState::PursuitState(Plane &self, NavigationGraph &navGraph, std::shared_p
 PursuitState::~PursuitState() = default;
 
 AIStateType PursuitState::Update(float deltaTime) {
-    if (!m_enemy) return AIStateType::PATROL;
 
     Vector3 selfPos = p_self.GetPosition();
     Vector3 enemyPos = m_enemy->GetPosition();

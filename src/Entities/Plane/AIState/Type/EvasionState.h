@@ -41,7 +41,7 @@ private:
     int m_candidateSamples = 150;
     float m_maxPathCost = 8000.0f;
     float m_escapeNodeReachedSq = 15000.0f;
-    int m_maxEvasionNodes = 3;
+    int m_maxEvasionNodes = 10;
 
     float m_stateTime = 0.0f;
 

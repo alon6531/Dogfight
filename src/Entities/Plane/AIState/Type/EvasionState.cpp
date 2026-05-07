@@ -16,14 +16,6 @@ int EvasionState::PickEscapeNode(Vector3 selfPos, Vector3 enemyPos) const {
     const float MAP_LIMIT_X = p_graph.GetArenaSize().x / 2.0f;
     const float MAP_LIMIT_Z = p_graph.GetArenaSize().z / 2.0f;
 
-    const float W_ALIGNMENT = 200.0f;
-    const float W_DISTANCE = 20.0f;
-    const float W_PENALTY = 5000.0f;
-
-    // משתנה הרעש - ככל שהוא גבוה יותר, ה-AI יתעלם מהלוגיקה ופשוט "ישתולל"
-    // אפשר להוסיף אותו ל-Header כ-m_noiseScale
-    const float noiseScale = 1600.0f;
-
     const auto& nodes = p_graph.GetNodes();
     int totalNodes = (int)nodes.size();
     int bestIdx = -1;
@@ -32,38 +24,28 @@ int EvasionState::PickEscapeNode(Vector3 selfPos, Vector3 enemyPos) const {
 
     for (int attempt = 0; attempt < m_candidateSamples; ++attempt) {
         int idx = GetRandomValue(0, totalNodes - 1);
-        if (nodes[idx].neighbors.empty()) continue;
 
         Vector3 nPos = nodes[idx].position;
-
-        // 1. מרחק מהאויב (פסילה בסיסית)
         float distEnemy = Vector3Distance(nPos, enemyPos);
-        if (distEnemy < m_minEscapeDist * 0.4f) continue;
 
-        // 2. כיווניות (Alignment)
+
+        // Alignment Score: How well the node aligns with our current forward
         Vector3 dirToNode = Vector3Normalize(Vector3Subtract(nPos, selfPos));
         float dot = Vector3DotProduct(forward, dirToNode);
-        float alignmentScore = (1.0f - fabsf(dot - 0.5f)) * W_ALIGNMENT;
+        float alignmentScore = (1.0f - fabsf(dot - 0.5f)) * 1.0f;
 
-        // 3. עונש גבולות (חובה כדי שלא יצא מהמפה)
-        float penalty = 0.0f;
-        if (fabsf(nPos.x) > (MAP_LIMIT_X - 150.0f) ||
-            fabsf(nPos.z) > (MAP_LIMIT_Z - 150.0f) ||
-            nPos.y > (MAP_CEILING - 100.0f) ||
-            nPos.y < 50.0f) {
-            penalty = W_PENALTY;
-        }
+        // Boundary Penalty: Flattened logic instead of multiple IFs
+        bool outX = fabsf(nPos.x) > (MAP_LIMIT_X - 150.0f);
+        bool outZ = fabsf(nPos.z) > (MAP_LIMIT_Z - 150.0f);
+        bool outY = nPos.y > (MAP_CEILING - 100.0f) || nPos.y < 50.0f;
+        float penalty = (outX || outZ || outY) * 5000.0f;
 
-        // 4. מרחק
-        float distScore = sqrtf(distEnemy) * W_DISTANCE;
+        float distScore = sqrtf(distEnemy) * 20.0f;
+        float chaos = (float)GetRandomValue(0, 1600);
 
-        // 5. רעש רנדומלי חזק (The Chaos Factor)
-        // אנחנו מגרילים מספר בטווח רחב מאוד כדי ש"ינצח" את שאר הציונים
-        float chaos = (float)GetRandomValue(0, (int)noiseScale);
-
-        // שקלול סופי: רעש משמעותי + לוגיקה מינימלית
         float score = alignmentScore + distScore + chaos - penalty;
 
+        // One final IF to keep the best
         if (score > bestScore) {
             bestScore = score;
             bestIdx = idx;
@@ -78,6 +60,7 @@ AIStateType EvasionState::Update(float deltaTime) {
     Vector3 selfPos = p_self.GetPosition();
     Vector3 enemyPos = m_enemy->GetPosition();
 
+    // Early return: If conditions met, switch state and exit function
     if (ShouldReturnToPursuit(selfPos, enemyPos)) {
         ResetState();
         return AIStateType::PURSUIT;
@@ -90,10 +73,36 @@ AIStateType EvasionState::Update(float deltaTime) {
     return AIStateType::EVASION;
 }
 
+void EvasionState::UpdateEscapeTarget(Vector3 selfPos, Vector3 enemyPos) {
+    // Check if current target is reached or doesn't exist
+    bool hasNoTarget = (m_escapeNodeIdx == -1);
+    bool targetReached = !hasNoTarget && (Vector3DistanceSqr(selfPos, p_graph.GetNodes()[m_escapeNodeIdx].position) < m_escapeNodeReachedSq);
+
+    if (hasNoTarget || targetReached) {
+        m_escapeNodeIdx = PickEscapeNode(selfPos, enemyPos);
+        p_path.clear();
+        m_pathTimer = m_replanInterval;
+    }
+}
+
+void EvasionState::NavigatePath(Vector3 selfPos, float deltaTime, Vector3 enemyPos) {
+
+
+    Vector3 nextTarget = p_path.front();
+
+    // Smooth waypoint transition
+    if (Vector3DistanceSqr(selfPos, nextTarget) < m_waypointRadiusSq) {
+        p_path.pop_front();
+        nextTarget = p_path.empty() ? nextTarget : p_path.front();
+    }
+
+    p_self.SteerTowards(nextTarget, deltaTime);
+    m_currentDir = nextTarget;
+}
+
 bool EvasionState::ShouldReturnToPursuit(Vector3 selfPos, Vector3 enemyPos) const {
-    float distSq = Vector3DistanceSqr(selfPos, enemyPos);
     bool hasHeightAdvantage = (selfPos.y - enemyPos.y) > (m_highGroundAdvantage + 20.0f);
-    bool hasSafeDistance = distSq > (m_safeDistSq * 1.44f);
+    bool hasSafeDistance = Vector3DistanceSqr(selfPos, enemyPos) > (m_safeDistSq * 1.44f);
 
     return (m_stateTime > 2.0f && (hasHeightAdvantage || hasSafeDistance));
 }
@@ -103,22 +112,6 @@ void EvasionState::ResetState() {
     m_escapeNodeIdx = -1;
 }
 
-void EvasionState::UpdateEscapeTarget(Vector3 selfPos, Vector3 enemyPos) {
-    bool needNewNode = (m_escapeNodeIdx == -1);
-
-    if (m_escapeNodeIdx != -1) {
-        Vector3 escapePos = p_graph.GetNodes()[m_escapeNodeIdx].position;
-        if (Vector3DistanceSqr(selfPos, escapePos) < m_escapeNodeReachedSq) {
-            needNewNode = true;
-        }
-    }
-
-    if (needNewNode) {
-        m_escapeNodeIdx = PickEscapeNode(selfPos, enemyPos);
-        p_path.clear();
-        m_pathTimer = m_replanInterval;
-    }
-}
 
 void EvasionState::ReplanPathIfNeeded(Vector3 selfPos) {
     m_pathTimer += GetFrameTime();
@@ -141,27 +134,8 @@ void EvasionState::ReplanPathIfNeeded(Vector3 selfPos) {
     }
 }
 
-void EvasionState::NavigatePath(Vector3 selfPos, float deltaTime, Vector3 enemyPos) {
-    if (!p_path.empty()) {
-        Vector3 nextTarget = p_path.front();
-        if (Vector3DistanceSqr(selfPos, nextTarget) < m_waypointRadiusSq) {
-            p_path.pop_front();
-            if (!p_path.empty()) nextTarget = p_path.front();
-        }
-        p_self.SteerTowards(nextTarget, deltaTime);
-        m_currentDir = nextTarget;
-    } else {
-        ExecuteEmergencyClimb(selfPos, enemyPos, deltaTime);
-    }
-}
 
-void EvasionState::ExecuteEmergencyClimb(Vector3 selfPos, Vector3 enemyPos, float deltaTime) {
-    Vector3 awayDir = Vector3Normalize(Vector3Subtract(selfPos, enemyPos));
-    Vector3 climbDir = Vector3Normalize({ awayDir.x * 0.6f, 1.0f, awayDir.z * 0.6f });
-    Vector3 emergencyTarget = Vector3Add(selfPos, Vector3Scale(climbDir, 600.0f));
-    p_self.SteerTowards(emergencyTarget, deltaTime);
-    m_currentDir = emergencyTarget;
-}
+
 
 Vector3 EvasionState::GetCurrentTargetFromAI() {
     return m_currentDir;

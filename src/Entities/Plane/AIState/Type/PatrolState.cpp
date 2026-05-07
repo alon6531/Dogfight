@@ -23,7 +23,7 @@ PatrolState::~PatrolState() {
 
 AIStateType PatrolState::Update(float deltaTime) {
 
-    if (p_path.empty()) return AIStateType::IDLE;
+
 
     Vector3 targetPoint = p_path.front();
     float distance = Vector3Distance(p_self.GetPosition(), targetPoint);

@@ -14,7 +14,7 @@
 #include <random>
 #include "../Base/State.h"
 extern "C" {
-#include "../../External/pl_mpeg.h"
+#include "../../External/VideoPlayer/VideoPlayer.h"
 }
 
 
@@ -57,10 +57,9 @@ private:
     Model m_obstacleWiresModel;
     bool m_obstacleModelsLoaded = false;
 
-    float m_timeMultiplier = 1.0f;
 
-    friend void OnVideoFrame(plm_t *player, plm_frame_t *frame, void *user);
-    friend void OnAudioFrame(plm_t *player, plm_samples_t *samples, void *user) ;
+    float m_timeMultiplier = 1.0f;
+    VideoPlayer m_videoPlayer;
 
 public:
     explicit SimsState(Engine& engine);
@@ -78,6 +77,7 @@ public:
 
     void Update(float deltaTime) override;
 
+    void DrawLoadingScreen();
 
 
     void Draw() override;

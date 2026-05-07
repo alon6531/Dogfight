@@ -6,7 +6,7 @@
 #include <vector>
 #include "raylib.h"
 #include "AIState/Base/AIState.h"
-#include "Control/MPCController.h"
+
 
 #define MASS 5.0f
 #define GRAVITY 10.0f
@@ -24,6 +24,7 @@
 
 
 class NavigationGraph;
+class MPCController;
 
 struct TargetLock {
     float lockProgress = 0.0f;

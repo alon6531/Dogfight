@@ -10,7 +10,7 @@
 #include "AIState/Type/TakeOffState.h"
 #include "../../Collision/GJK.h"
 #include "AIState/Type/FuelState.h"
-
+#include "Control/MPCController.h"
 
 Plane::Plane(const Vector3 &position, const Vector3 &velocity, const Color &color, NavigationGraph& graph,
              const Vector3 &targetPos)
@@ -41,8 +41,31 @@ Plane::~Plane() {
 
 void Plane::Update(float deltaTime, NavigationGraph& graph, const Map& map, const std::vector<Obstacle>& obstacles) {
     UpdateLockSystem(deltaTime);
+
+    // --- 1. MPC STEERING CALCULATION ---
+    if (m_mpc && m_currentStateType != AIStateType::IDLE) {
+        // We calculate the best steering direction based on our current state
+        // Target is determined by the FSM (the next point in the path)
+        Vector3 mpcTarget = m_fsm->GetCurrentTargetFromAI();
+        // Get the optimized direction from MPC
+        Vector3 bestSteer = m_mpc->CalculateBestSteer(
+            m_position,
+            m_velocity,
+            m_forward,
+            mpcTarget,
+            obstacles,
+            m_enemy
+        );
+
+        // Smoothly rotate m_forward towards the best steer direction
+        float rotationSpeed = 2.5f; // Adjust for "snappiness"
+        m_forward = Vector3Normalize(Vector3Lerp(m_forward, bestSteer, rotationSpeed * deltaTime));
+    }
+
+    // Now physics will use the updated m_forward
     UpdatePhysics(deltaTime, map, obstacles);
 
+    // --- 2. FSM UPDATE ---
     if (m_fsm) {
         AIStateType nextState = m_fsm->Update(deltaTime);
 
@@ -51,17 +74,12 @@ void Plane::Update(float deltaTime, NavigationGraph& graph, const Map& map, cons
         }
     }
 
-
+    // --- 3. FUEL LOGIC ---
     if (m_currentStateType != AIStateType::FUEL && (m_fuel <= ESCAPE_FUEL && m_fuel >= ESCAPE_FUEL - 30.0f)) {
-
-
         m_targetPos = m_liftPoint;
         ChangeAIState(AIStateType::PATROL, graph);
-
         std::cout << "Low Fuel! Returning to Lift-Off Point for approach." << std::endl;
     }
-
-
 }
 
 void Plane::ChangeAIState(AIStateType newState, NavigationGraph& graph) {
@@ -97,12 +115,11 @@ void Plane::UpdatePhysics(float deltaTime, const Map& map, const std::vector<Obs
 
     if (m_fuel >= 0)
         m_fuel -= m_thrust * deltaTime;
-    // 1. חישוב מהירות בריבוע (מהיר בהרבה מ-Length)
+
     float vx = m_velocity.x, vy = m_velocity.y, vz = m_velocity.z;
     float speedSq = vx*vx + vy*vy + vz*vz;
     float currentSpeed = sqrtf(speedSq);
 
-    // 2. חישוב כוחות בסיסי - צמצום קריאות ל-FSM
     bool hasPath = (m_fsm != nullptr);
     float throttle = hasPath ? 1.0f : 0.0f;
 
@@ -110,21 +127,15 @@ void Plane::UpdatePhysics(float deltaTime, const Map& map, const std::vector<Obs
     m_drug = speedSq * DRAG_COEFF;
     m_lift = currentSpeed * 0.85f;
 
-    // 3. עדכון כיוון (רק אם יש MPC/היגוי)
-    // הערה: אם mpcSteerDir ריק, תשתמש ב-m_forward הקיים
-    // m_forward = Vector3Normalize(Vector3Lerp(m_forward, mpcSteerDir, 2.0f * deltaTime));
 
-    // 4. איחוד חישובי תאוצה
     float totalAcc = (m_thrust - m_drug) + (-m_forward.y * SLOPE_EFFECT);
     float newSpeed = fmaxf(0.1f, currentSpeed + (totalAcc * deltaTime));
 
-    // עדכון וקטור המהירות
     m_velocity.x = m_forward.x * newSpeed;
     m_velocity.y = m_forward.y * newSpeed + (m_lift - (GRAVITY * MASS)) * deltaTime;
     m_velocity.z = m_forward.z * newSpeed;
 
-    // 5. ה-FPS KILLER: בדיקת קרקע
-    // תבצע את הבדיקה רק אם המטוס נמצא מתחת לגובה "סכנה" אבסולוטי
+
     if (m_position.y < 0.0f) {
         CheckGroundCollision(map, deltaTime);
     }
@@ -319,13 +330,11 @@ void Plane::DrawLocked(Camera3D camera) const {
     Vector3 selfPos = m_position;
     Vector3 enemyPos = m_enemy->GetPosition();
 
-    // 1. בדיקה אם האויב לפנינו (Dot Product)
     Vector3 dirToEnemy = Vector3Normalize(Vector3Subtract(enemyPos, selfPos));
     float alignment = Vector3DotProduct(m_forward, dirToEnemy);
 
     if (alignment < 0) return;
 
-    // 2. המרה למסך
     Vector2 screenPos = GetWorldToScreen(enemyPos, camera);
 
     if (screenPos.x > 0 && screenPos.x < GetScreenWidth() &&
@@ -338,27 +347,22 @@ void Plane::DrawLocked(Camera3D camera) const {
 
         float boxSize = m_targetLock.isLocked ? 40.0f : 60.0f;
 
-        // ציור הריבוע
         DrawRectangleLinesEx(Rectangle{ screenPos.x - boxSize/2, screenPos.y - boxSize/2, boxSize, boxSize }, 2, lockColor);
 
-        // --- הוספת כיתוב LOCK ---
         if (m_targetLock.isLocked) {
-            // כיתוב LOCK מעל הריבוע
+
             int fontSize = 20;
             int textWidth = MeasureText("LOCK", fontSize);
             DrawText("LOCK", screenPos.x - textWidth / 2, screenPos.y - boxSize / 2 - 25, fontSize, RED);
 
-            // בונוס: הוספת מרחק מתחת לריבוע
             float dist = Vector3Distance(selfPos, enemyPos);
             DrawText(TextFormat("%.0fm", dist), screenPos.x - 20, screenPos.y + boxSize / 2 + 5, 15, RED);
         }
 
-        // חיווי על גובה
         if (lowHeight && !m_targetLock.isLocked) {
             DrawText("GAIN ALTITUDE", screenPos.x - 45, screenPos.y + (boxSize / 2 + 15), 10, ORANGE);
         }
 
-        // מד התקדמות הנעילה
         if (!m_targetLock.isLocked && m_targetLock.lockProgress > 0) {
             DrawRectangle(screenPos.x - 30, screenPos.y + 35, 60 * m_targetLock.lockProgress, 4, LIME);
         }
