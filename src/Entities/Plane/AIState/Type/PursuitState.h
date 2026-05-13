@@ -8,6 +8,19 @@
 
 #include "../Base/AIState.h"
 
+// --- Update: evasion trigger ---
+#define PURSUIT_EVASION_ALIGNMENT_THRESHOLD     0.95f
+#define PURSUIT_EVASION_DIST_SQ_MAX         400000.0f
+#define PURSUIT_EVASION_HEIGHT_MARGIN           20.0f
+
+// --- Update: replan ---
+#define PURSUIT_REPLAN_INTERVAL                  0.2f
+#define PURSUIT_TARGET_HEIGHT_OFFSET            50.0f
+#define PURSUIT_MAX_PATH_NODES                   8
+
+// --- Update: waypoint advance ---
+#define PURSUIT_WAYPOINT_RADIUS_SQ           10000.0f
+
 
 class PursuitState : public AIState{
 private:

@@ -4,6 +4,32 @@
 #include "raylib.h"
 #include <vector>
 
+// --- Load ---
+#define MAP_HEIGHTMAP_MAX_SIZE          512
+#define MAP_POSITION_Y_FACTOR           0.7f
+#define MAP_FOG_SHADER_VS               "Assets/shaders/fog.vs"
+#define MAP_FOG_SHADER_FS               "Assets/shaders/fog.fs"
+#define MAP_FOG_COLOR_R                 0.4f
+#define MAP_FOG_COLOR_G                 0.75f
+#define MAP_FOG_COLOR_B                 1.0f
+#define MAP_FOG_COLOR_A                 1.0f
+#define MAP_FOG_DENSITY_DEFAULT         0.001f
+#define MAP_AIRPORT_SIZE_X              400.0f
+#define MAP_AIRPORT_SIZE_Y              2.0f
+#define MAP_AIRPORT_SIZE_Z              100.0f
+#define MAP_AIRPORT_BASE_POS_X         -600.0f
+#define MAP_AIRPORT_BASE_POS_Z         -400.0f
+#define MAP_AIRPORT_HEIGHT_OFFSET       25.0f
+
+// --- IsBelowGround ---
+#define MAP_GROUND_EPSILON              1.0f
+#define MAP_HEIGHT_NORMALIZE            255.0f
+
+// --- Draw ---
+#define MAP_AIRPORT_WIRE_Y_OFFSET       0.5f
+
+
+
 class Map {
 public:
     Map() = default;

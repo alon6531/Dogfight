@@ -4,6 +4,8 @@
 #include <cfloat>
 #include "imgui.h"
 
+
+
 EvasionState::EvasionState(Plane& self, NavigationGraph& navGraph, std::shared_ptr<Plane> enemy)
     : AIState(self, navGraph), m_enemy(std::move(enemy)) {
     m_dStarLite = std::make_unique<DStarLite>(p_graph);
@@ -18,37 +20,33 @@ int EvasionState::PickEscapeNode(Vector3 selfPos, Vector3 enemyPos) const {
 
     const auto& nodes = p_graph.GetNodes();
     int totalNodes = (int)nodes.size();
-    int bestIdx = -1;
+    int bestIdx    = -1;
     float bestScore = -FLT_MAX;
     Vector3 forward = p_self.GetForward();
 
     for (int attempt = 0; attempt < m_candidateSamples; ++attempt) {
         int idx = GetRandomValue(0, totalNodes - 1);
 
-        Vector3 nPos = nodes[idx].position;
-        float distEnemy = Vector3Distance(nPos, enemyPos);
+        Vector3 nPos      = nodes[idx].position;
+        float distEnemy   = Vector3Distance(nPos, enemyPos);
 
+        Vector3 dirToNode    = Vector3Normalize(Vector3Subtract(nPos, selfPos));
+        float dot            = Vector3DotProduct(forward, dirToNode);
+        float alignmentScore = (1.0f - fabsf(dot - ESCAPE_ALIGNMENT_TARGET_DOT)) * ESCAPE_ALIGNMENT_SCALE;
 
-        // Alignment Score: How well the node aligns with our current forward
-        Vector3 dirToNode = Vector3Normalize(Vector3Subtract(nPos, selfPos));
-        float dot = Vector3DotProduct(forward, dirToNode);
-        float alignmentScore = (1.0f - fabsf(dot - 0.5f)) * 1.0f;
+        bool outX    = fabsf(nPos.x) > (MAP_LIMIT_X - ESCAPE_BOUNDARY_MARGIN_XZ);
+        bool outZ    = fabsf(nPos.z) > (MAP_LIMIT_Z - ESCAPE_BOUNDARY_MARGIN_XZ);
+        bool outY    = nPos.y > (MAP_CEILING - ESCAPE_BOUNDARY_MARGIN_Y_TOP) || nPos.y < ESCAPE_BOUNDARY_MIN_Y;
+        float penalty = (outX || outZ || outY) * ESCAPE_BOUNDARY_PENALTY;
 
-        // Boundary Penalty: Flattened logic instead of multiple IFs
-        bool outX = fabsf(nPos.x) > (MAP_LIMIT_X - 150.0f);
-        bool outZ = fabsf(nPos.z) > (MAP_LIMIT_Z - 150.0f);
-        bool outY = nPos.y > (MAP_CEILING - 100.0f) || nPos.y < 50.0f;
-        float penalty = (outX || outZ || outY) * 5000.0f;
-
-        float distScore = sqrtf(distEnemy) * 20.0f;
-        float chaos = (float)GetRandomValue(0, 1600);
+        float distScore = sqrtf(distEnemy) * ESCAPE_DIST_SCORE_SCALE;
+        float chaos     = (float)GetRandomValue(0, ESCAPE_CHAOS_MAX);
 
         float score = alignmentScore + distScore + chaos - penalty;
 
-        // One final IF to keep the best
         if (score > bestScore) {
             bestScore = score;
-            bestIdx = idx;
+            bestIdx   = idx;
         }
     }
 
@@ -57,10 +55,9 @@ int EvasionState::PickEscapeNode(Vector3 selfPos, Vector3 enemyPos) const {
 
 AIStateType EvasionState::Update(float deltaTime) {
     m_stateTime += deltaTime;
-    Vector3 selfPos = p_self.GetPosition();
+    Vector3 selfPos  = p_self.GetPosition();
     Vector3 enemyPos = m_enemy->GetPosition();
 
-    // Early return: If conditions met, switch state and exit function
     if (ShouldReturnToPursuit(selfPos, enemyPos)) {
         ResetState();
         return AIStateType::PURSUIT;
@@ -74,9 +71,9 @@ AIStateType EvasionState::Update(float deltaTime) {
 }
 
 void EvasionState::UpdateEscapeTarget(Vector3 selfPos, Vector3 enemyPos) {
-    // Check if current target is reached or doesn't exist
-    bool hasNoTarget = (m_escapeNodeIdx == -1);
-    bool targetReached = !hasNoTarget && (Vector3DistanceSqr(selfPos, p_graph.GetNodes()[m_escapeNodeIdx].position) < m_escapeNodeReachedSq);
+    bool hasNoTarget   = (m_escapeNodeIdx == -1);
+    bool targetReached = !hasNoTarget &&
+                         (Vector3DistanceSqr(selfPos, p_graph.GetNodes()[m_escapeNodeIdx].position) < m_escapeNodeReachedSq);
 
     if (hasNoTarget || targetReached) {
         m_escapeNodeIdx = PickEscapeNode(selfPos, enemyPos);
@@ -86,11 +83,8 @@ void EvasionState::UpdateEscapeTarget(Vector3 selfPos, Vector3 enemyPos) {
 }
 
 void EvasionState::NavigatePath(Vector3 selfPos, float deltaTime, Vector3 enemyPos) {
-
-
     Vector3 nextTarget = p_path.front();
 
-    // Smooth waypoint transition
     if (Vector3DistanceSqr(selfPos, nextTarget) < m_waypointRadiusSq) {
         p_path.pop_front();
         nextTarget = p_path.empty() ? nextTarget : p_path.front();
@@ -101,10 +95,10 @@ void EvasionState::NavigatePath(Vector3 selfPos, float deltaTime, Vector3 enemyP
 }
 
 bool EvasionState::ShouldReturnToPursuit(Vector3 selfPos, Vector3 enemyPos) const {
-    bool hasHeightAdvantage = (selfPos.y - enemyPos.y) > (m_highGroundAdvantage + 20.0f);
-    bool hasSafeDistance = Vector3DistanceSqr(selfPos, enemyPos) > (m_safeDistSq * 1.44f);
+    bool hasHeightAdvantage = (selfPos.y - enemyPos.y) > (m_highGroundAdvantage + PURSUIT_HEIGHT_ADVANTAGE_BONUS);
+    bool hasSafeDistance = Vector3DistanceSqr(selfPos, enemyPos) > (m_enemy->Get_lockDistanceSq() * PURSUIT_SAFE_DIST_SQ_MULT);
 
-    return (m_stateTime > 2.0f && (hasHeightAdvantage || hasSafeDistance));
+    return (m_stateTime > PURSUIT_MIN_STATE_TIME && (hasHeightAdvantage || hasSafeDistance));
 }
 
 void EvasionState::ResetState() {
@@ -112,14 +106,13 @@ void EvasionState::ResetState() {
     m_escapeNodeIdx = -1;
 }
 
-
 void EvasionState::ReplanPathIfNeeded(Vector3 selfPos) {
     m_pathTimer += GetFrameTime();
     if ((m_pathTimer >= m_replanInterval || p_path.empty()) && m_escapeNodeIdx != -1) {
         m_pathTimer = 0.0f;
         Vector3 escapePos = p_graph.GetNodes()[m_escapeNodeIdx].position;
-        auto pathPoints = m_dStarLite->PlanPath(selfPos, escapePos);
-        float pathCost = m_dStarLite->GetLastPathCost();
+        auto pathPoints   = m_dStarLite->PlanPath(selfPos, escapePos);
+        float pathCost    = m_dStarLite->GetLastPathCost();
 
         if (!pathPoints.empty() && pathCost < m_maxPathCost) {
             p_path.clear();
@@ -134,43 +127,37 @@ void EvasionState::ReplanPathIfNeeded(Vector3 selfPos) {
     }
 }
 
-
-
-
 Vector3 EvasionState::GetCurrentTargetFromAI() {
     return m_currentDir;
 }
 
 void EvasionState::DrawDebugUI() {
-    float padding = 20.0f;
-    float windowWidth = 300.0f;
-
-    ImGui::SetNextWindowPos({(float)GetScreenWidth() - windowWidth - padding, padding}, ImGuiCond_Always);
-    ImGui::SetNextWindowSize({windowWidth, 550}, ImGuiCond_Always);
+    ImGui::SetNextWindowPos( { (float)GetScreenWidth() - DEBUG_WIN_WIDTH - DEBUG_WIN_PADDING, DEBUG_WIN_PADDING }, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({ DEBUG_WIN_WIDTH, DEBUG_WIN_HEIGHT }, ImGuiCond_Always);
 
     if (ImGui::Begin("AI Evasion Tuning", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)) {
-        ImGui::TextColored({0, 255, 0, 255}, "STATE: EVASION");
+        ImGui::TextColored({ DEBUG_STATE_COLOR_R, DEBUG_STATE_COLOR_G, DEBUG_STATE_COLOR_B, DEBUG_STATE_COLOR_A }, "STATE: EVASION");
         ImGui::Separator();
 
         ImGui::Text("Pathfinding");
-        ImGui::SliderFloat("Replan Interval", &m_replanInterval, 0.05f, 2.0f);
-        ImGui::SliderFloat("Max Path Cost", &m_maxPathCost, 500.0f, 15000.0f);
+        ImGui::SliderFloat("Replan Interval", &m_replanInterval, DEBUG_REPLAN_MIN,    DEBUG_REPLAN_MAX);
+        ImGui::SliderFloat("Max Path Cost",   &m_maxPathCost,    DEBUG_PATH_COST_MIN, DEBUG_PATH_COST_MAX);
 
         ImGui::Separator();
         ImGui::Text("Scoring Weights");
-        ImGui::DragFloat("Altitude Weight", &m_altitudeWeight, 0.1f, 0.0f, 20.0f);
-        ImGui::DragFloat("Distance Weight", &m_distanceWeight, 0.1f, 0.0f, 20.0f);
+        ImGui::DragFloat("Altitude Weight", &m_altitudeWeight, DEBUG_WEIGHT_STEP, DEBUG_WEIGHT_MIN, DEBUG_WEIGHT_MAX);
+        ImGui::DragFloat("Distance Weight", &m_distanceWeight, DEBUG_WEIGHT_STEP, DEBUG_WEIGHT_MIN, DEBUG_WEIGHT_MAX);
 
         ImGui::Separator();
         ImGui::Text("Distances");
-        ImGui::SliderFloat("Min Escape Dist", &m_minEscapeDist, 100.0f, 2000.0f);
-        ImGui::SliderFloat("Safe Distance Sq", &m_safeDistSq, 10000.0f, 1000000.0f);
+        ImGui::SliderFloat("Min Escape Dist",  &m_minEscapeDist, DEBUG_ESCAPE_DIST_MIN,  DEBUG_ESCAPE_DIST_MAX);
+        ImGui::SliderFloat("Safe Distance Sq", &m_enemy->Get_lockDistanceSq(),    DEBUG_SAFE_DIST_SQ_MIN, DEBUG_SAFE_DIST_SQ_MAX);
 
         ImGui::Separator();
         ImGui::Text("Path Constraints");
-        ImGui::SliderInt("Max Path Nodes", &m_maxEvasionNodes, 1, 50);
+        ImGui::SliderInt("Max Path Nodes", &m_maxEvasionNodes, DEBUG_PATH_NODES_MIN, DEBUG_PATH_NODES_MAX);
 
-        if (ImGui::Button("Force Path Reset", { -1, 30 })) {
+        if (ImGui::Button("Force Path Reset", { -1, DEBUG_RESET_BTN_HEIGHT })) {
             ResetState();
         }
         ImGui::End();

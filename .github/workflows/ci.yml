@@ -3,6 +3,8 @@ name: C++ Raylib Build Check
 on:
   push:
     branches: ["**"]
+  pull_request:
+    branches: ["**"]
 
 jobs:
   build-linux:
@@ -10,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
@@ -24,6 +26,8 @@ jobs:
             libglu1-mesa-dev \
             libxcursor-dev \
             libxinerama-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
             cmake \
             build-essential
 
@@ -31,4 +35,5 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build Project
-        run: cmake --build build --config Release
+
+        run: cmake --build build --config Release --parallel 2

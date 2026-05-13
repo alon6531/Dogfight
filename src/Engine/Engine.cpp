@@ -120,4 +120,5 @@ void Engine::Run() {
         Update(dt);
 
         Render();
+    }
 }

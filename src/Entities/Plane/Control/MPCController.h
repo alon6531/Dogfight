@@ -7,9 +7,17 @@
 #include <vector>
 
 
+// --- CalculateBestSteer ---
+#define MPC_NUM_SAMPLES                 15
+#define MPC_JITTER_RANGE               100
+#define MPC_JITTER_SCALE               100.0f
+#define MPC_JITTER_BLEND                 0.5f
 
-#include "raylib.h"
-#include <vector>
+// --- SimulateAndGetCost ---
+#define MPC_DISTANCE_WEIGHT              1.0f
+#define MPC_COLLISION_PENALTY        10000.0f
+#define MPC_GROUND_MIN_HEIGHT           20.0f
+#define MPC_GROUND_PENALTY             500.0f
 
 class Plane;
 

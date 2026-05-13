@@ -9,7 +9,8 @@
 #include "raylib.h"
 #include "../Base/AIState.h"
 
-
+// --- Update ---
+#define PATROL_WAYPOINT_RADIUS      50.0f
 
 class PatrolState : public AIState{
 private:

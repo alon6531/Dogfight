@@ -71,12 +71,23 @@ void VideoPlayer::Draw(int x, int y, int width, int height) {
 }
 
 void VideoPlayer::Unload() {
-    if (m_plm) plm_destroy(m_plm);
-    if (m_videoFrame.id > 0) UnloadTexture(m_videoFrame);
-    if (m_audioStream.buffer) UnloadAudioStream(m_audioStream);
-    if (m_videoRgbBuffer) free(m_videoRgbBuffer);
+    if (m_plm) {
+        plm_destroy(m_plm);
+        m_plm = nullptr;
+    }
+    if (m_videoFrame.id > 0) {
+        UnloadTexture(m_videoFrame);
+        m_videoFrame.id = 0; // חשוב מאוד!
+    }
+    if (m_audioStream.buffer != nullptr) {
+        UnloadAudioStream(m_audioStream);
+        m_audioStream.buffer = nullptr; // חשוב מאוד!
+    }
+    if (m_videoRgbBuffer) {
+        free(m_videoRgbBuffer);
+        m_videoRgbBuffer = nullptr;
+    }
 
-    m_plm = nullptr;
     m_isLoaded = false;
 }
 

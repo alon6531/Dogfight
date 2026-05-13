@@ -12,6 +12,47 @@
 #include <vector>
 #include "raylib.h"
 
+// --- IsPointBlocked ---
+#define OBSTACLE_SAFETY_MARGIN      64.0f
+
+// --- GetPathWeight ---
+#define PATH_SAMPLE_MIN_COUNT       3
+#define PATH_SAMPLE_INTERVAL        0.5f
+#define PATH_WEIGHT_BLOCKED_MULT    100.0f
+#define PATH_WEIGHT_CLEAR_MULT      1.0f
+
+// --- BuildNodes / BuildEdges (getPosKey) ---
+#define POS_KEY_OFFSET              10000
+#define POS_KEY_MASK                0xFFFFF
+#define POS_KEY_X_SHIFT             40
+#define POS_KEY_Y_SHIFT             20
+#define POS_KEY_GRID_EPSILON        0.1f
+
+// --- BuildDistanceMatrix ---
+#define LANDMARK_COUNT_START        0
+#define LANDMARK_INVALID_DIST      -1.0f
+
+// --- PrepareGPUData ---
+#define NODE_CUBE_SIZE              0.2f
+#define NODES_PER_MESH_CHUNK        500
+
+// --- Draw ---
+#define EDGE_FALLBACK_COLOR_R       180
+#define EDGE_FALLBACK_COLOR_G       180
+#define EDGE_FALLBACK_COLOR_B       180
+#define EDGE_FALLBACK_COLOR_A       120
+#define EDGE_HUE_MULTIPLIER         150.0f
+#define EDGE_HUE_MODULO             360.0f
+#define EDGE_SPATIAL_SCALE          0.1f
+#define EDGE_SATURATION             0.9f
+#define EDGE_VALUE                  0.9f
+#define EDGE_BLOCKED_THRESHOLD      10.0f
+#define EDGE_BLOCKED_COLOR_R        255
+#define EDGE_BLOCKED_COLOR_G        0
+#define EDGE_BLOCKED_COLOR_B        0
+#define EDGE_BLOCKED_COLOR_A        50
+#define EDGE_NORMAL_ALPHA           180
+
 
 
 // Represents an edge in the adjacency list
